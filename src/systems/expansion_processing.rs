@@ -42,14 +42,34 @@ pub fn process_expansion_fronts(
                     .or_insert_with(BinaryHeap::new);
 
                 // If queue is empty, seed it with border tiles
+                // Optimized: Use attacker's border_tiles instead of scanning entire board
                 if queue.is_empty() {
                     let _span = tracing::info_span!("seed_queue").entered();
-                    for y in 0..BOARD_HEIGHT {
-                        for x in 0..BOARD_WIDTH {
-                            if board.tiles[y][x].owner == attacker {
-                                add_neighbors_to_queue(
-                                    x, y, attacker, defender, board, queue, &mut rng,
-                                );
+                    if let Some((_, attacker_player)) = players.iter().find(|(_, p)| p.id == attacker) {
+                        for &(bx, by) in &attacker_player.border_tiles {
+                            // Check neighbors of this border tile
+                            for (nx, ny) in get_neighbors(bx, by) {
+                                if board.tiles[ny][nx].owner == defender {
+                                    // This neighbor tile can be conquered - add to queue
+                                    let mut num_owned_by_attacker = 0;
+                                    for (nnx, nny) in get_neighbors(nx, ny) {
+                                        if board.tiles[nny][nnx].owner == attacker {
+                                            num_owned_by_attacker += 1;
+                                        }
+                                    }
+
+                                    let terrain_mag = board.tiles[ny][nx].terrain_difficulty;
+                                    let random_factor = rng.random_range(10..=17);
+                                    let priority = (random_factor as f32
+                                        * (1.0 - num_owned_by_attacker as f32 * 0.5 + terrain_mag / 2.0))
+                                        as u32;
+
+                                    queue.push(ConquerTask {
+                                        priority,
+                                        x: nx,
+                                        y: ny,
+                                    });
+                                }
                             }
                         }
                     }
