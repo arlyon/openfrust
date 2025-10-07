@@ -34,11 +34,9 @@ pub fn update_game(
     assign_and_log_expansions(&board, &mut players, &mut expansions);
 
     // 3. Process all expansion fronts and move borders
+    // Note: Borders are now updated incrementally inside process_expansion_fronts
     process_expansion_fronts(&mut board, &mut players, &mut expansions);
 
-    // 4. Recalculate borders
-    recalculate_all_borders(&board, &mut players);
-
-    // 5. Clear expansion fronts for pairs that no longer share a border and refund troops
+    // 4. Clear expansion fronts for pairs that no longer share a border and refund troops
     clear_disconnected_fronts(&board, &mut expansions, &mut players);
 }

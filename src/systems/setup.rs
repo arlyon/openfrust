@@ -35,24 +35,27 @@ pub fn setup(mut commands: Commands) {
             rng.random::<f32>(),
         );
 
+        // Find starting position first
+        let (start_x, start_y) = loop {
+            let x = rng.random_range(10..BOARD_WIDTH - 10);
+            let y = rng.random_range(5..BOARD_HEIGHT - 5);
+            if board_res.tiles[y][x].owner == NO_OWNER {
+                break (x, y);
+            }
+        };
+
         let player_data = PlayerData {
             id: i,
             char: ((i % 26) as u8 + b'A') as char,
             troops: 1000,
             tile_count: 1, // Each player starts with one tile
+            sum_x: start_x as u64, // Initialize with starting position
+            sum_y: start_y as u64, // Initialize with starting position
             border_tiles: HashSet::new(),
             color,
         };
 
-        // Find starting position
-        loop {
-            let x = rng.random_range(10..BOARD_WIDTH - 10);
-            let y = rng.random_range(5..BOARD_HEIGHT - 5);
-            if board_res.tiles[y][x].owner == NO_OWNER {
-                board_res.tiles[y][x].owner = player_data.id;
-                break;
-            }
-        }
+        board_res.tiles[start_y][start_x].owner = player_data.id;
 
         let player_entity = commands.spawn((player_data.clone(), Alive)).id();
 

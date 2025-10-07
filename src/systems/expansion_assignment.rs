@@ -13,7 +13,6 @@ pub fn assign_and_log_expansions(
 ) {
     // Assign troops to expansion fronts
     {
-        let _assign_span = tracing::debug_span!("assign_troops").entered();
         for (_, player) in players.iter_mut() {
             if player.troops > 50 {
                 assign_expansion_troops(&board, &player, expansions);
@@ -23,7 +22,6 @@ pub fn assign_and_log_expansions(
 
     // Log active expansion fronts
     {
-        let _log_span = tracing::debug_span!("log_expansions").entered();
         let has_active_fronts = expansions.fronts.iter().any(|&troops| troops != 0);
         if has_active_fronts {
             bevy::log::debug!("Active expansion fronts:");

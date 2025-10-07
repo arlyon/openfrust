@@ -47,24 +47,10 @@ pub fn update_player_info(
             // Update text
             text.0 = format!("P{}: {}", player.id, player.troops);
 
-            // Calculate center of player's territory
-            let mut sum_x = 0.0;
-            let mut sum_y = 0.0;
-            let mut count = 0;
-
-            for y in 0..BOARD_HEIGHT {
-                for x in 0..BOARD_WIDTH {
-                    if board.tiles[y][x].owner == player.id {
-                        sum_x += x as f32;
-                        sum_y += y as f32;
-                        count += 1;
-                    }
-                }
-            }
-
-            if count > 0 {
-                let center_x = sum_x / count as f32;
-                let center_y = sum_y / count as f32;
+            // Calculate center using cached coordinate sums (O(1) instead of O(board_size))
+            if player.tile_count > 0 {
+                let center_x = player.sum_x as f32 / player.tile_count as f32;
+                let center_y = player.sum_y as f32 / player.tile_count as f32;
 
                 let pos_x = (center_x - BOARD_WIDTH as f32 / 2.0) * TILE_SIZE;
                 let pos_y = (BOARD_HEIGHT as f32 / 2.0 - center_y) * TILE_SIZE;

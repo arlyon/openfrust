@@ -11,8 +11,10 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+[profile.release]
+strip = true
 
 [dependencies]
-bevy = { version = "0.17.2", features = ["dynamic_linking", "trace", "trace_tracy", "wayland"] }
+bevy = { version = "0.17.2", features = ["trace", "trace_tracy", "wayland"] }
 rand = "0.9.2"
 tracing = "0.1.41"

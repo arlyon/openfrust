@@ -22,6 +22,8 @@ pub struct PlayerData {
     pub char: char,
     pub troops: u32,
     pub tile_count: usize,
+    pub sum_x: u64, // Sum of x coordinates of all owned tiles (for center calculation)
+    pub sum_y: u64, // Sum of y coordinates of all owned tiles (for center calculation)
     pub border_tiles: HashSet<(usize, usize)>,
     pub color: Color,
 }

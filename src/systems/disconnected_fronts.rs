@@ -20,10 +20,7 @@ pub fn clear_disconnected_fronts(
 
             // Check if these two players still share a border
             // Optimized: Use border_tiles instead of full board scan
-            let shares_border = {
-                let _check_span = tracing::debug_span!("check_border_sharing").entered();
-                check_players_share_border(a, b, board, players)
-            };
+            let shares_border = check_players_share_border(a, b, board, players);
 
             if !shares_border {
                 // Refund troops to both players

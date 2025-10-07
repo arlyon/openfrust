@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 
 use crate::types::*;
-use crate::utils::count_tiles;
 
 /// Handles player elimination and troop generation
 #[tracing::instrument(skip_all)]
@@ -11,8 +10,6 @@ pub fn check_eliminations_and_update_troops(
     commands: &mut Commands,
     text_query: &Query<(Entity, &PlayerInfoText)>,
 ) -> Vec<(Entity, usize)> {
-    let _span = tracing::info_span!("check_eliminations_and_update_troops").entered();
-
     let mut to_eliminate = Vec::new();
 
     for (entity, mut player) in players.iter_mut() {
