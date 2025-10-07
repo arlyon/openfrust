@@ -10,8 +10,6 @@ use crate::types::*;
 /// Main game update system - orchestrates all subsystems with tracing
 #[tracing::instrument(skip_all)]
 pub fn update_game(
-    time: Res<Time>,
-    mut timer: ResMut<GameUpdateTimer>,
     mut board: ResMut<Board>,
     mut players: Query<(Entity, &mut PlayerData), With<Alive>>,
     mut expansions: ResMut<ActiveExpansions>,
@@ -20,9 +18,7 @@ pub fn update_game(
     tile_change_writer: MessageWriter<TileChangeMessage>,
     player_map: Res<PlayerEntityMap>,
 ) {
-    if !timer.0.tick(time.delta()).just_finished() {
-        return;
-    }
+    // FixedUpdate runs at 10hz automatically, no need for manual timer
 
     // 1. Check for eliminations and update troop generation
     check_eliminations_and_update_troops(&mut players, &mut expansions, &mut commands, &text_query);

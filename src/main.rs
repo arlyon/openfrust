@@ -28,17 +28,15 @@ fn main() {
             ..default()
         }))
         .add_message::<TileChangeMessage>()
+        .insert_resource(Time::<Fixed>::from_hz(10.0))
         .add_systems(
             Startup,
             (systems::setup, systems::initial_border_calculation).chain(),
         )
+        .add_systems(FixedUpdate, systems::update_game)
         .add_systems(
             Update,
-            (
-                systems::update_game,
-                systems::update_tiles,
-                systems::update_player_info,
-            ),
+            (systems::update_tiles, systems::update_player_info),
         )
         .run();
 }
