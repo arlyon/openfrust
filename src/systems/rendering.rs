@@ -3,28 +3,26 @@ use bevy::prelude::*;
 use crate::types::*;
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
 
-/// Render system to update tile colors
+/// Render system to update tile colors based on TileChangeMessages
+/// Message-driven approach: only updates tiles that actually changed
 #[tracing::instrument(skip_all)]
 pub fn update_tiles(
-    board: Res<Board>,
-    players: Query<&PlayerData, With<Alive>>,
-    mut query: Query<(&TileEntity, &mut Sprite)>,
+    mut tile_change_reader: MessageReader<TileChangeMessage>,
+    tile_map: Res<TileEntityMap>,
+    color_map: Res<PlayerColorMap>,
+    mut sprite_query: Query<&mut Sprite>,
 ) {
-    if !board.is_changed() {
-        return;
-    }
+    let _span = tracing::info_span!("update_tiles").entered();
 
-    for (tile_entity, mut sprite) in query.iter_mut() {
-        let owner = board.tiles[tile_entity.y][tile_entity.x].owner;
-        sprite.color = if owner == NO_OWNER {
-            Color::srgb(0.1, 0.1, 0.1)
-        } else {
-            players
-                .iter()
-                .find(|p| p.id == owner)
-                .map(|p| p.color)
-                .unwrap_or(Color::srgb(0.1, 0.1, 0.1))
-        };
+    for message in tile_change_reader.read() {
+        // 1. Get the entity for the changed tile in O(1)
+        let tile_entity = tile_map.0[message.y][message.x];
+
+        // 2. Get the sprite component for that specific entity
+        if let Ok(mut sprite) = sprite_query.get_mut(tile_entity) {
+            // 3. Get the new color in O(1)
+            sprite.color = color_map.0[message.new_owner];
+        }
     }
 }
 

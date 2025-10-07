@@ -26,6 +26,10 @@ pub fn setup(mut commands: Commands) {
 
     let mut board_res = Board { tiles: board };
 
+    // Initialize PlayerColorMap
+    let mut player_colors = vec![Color::srgb(0.1, 0.1, 0.1); NUM_PLAYERS + 1];
+    player_colors[NO_OWNER] = Color::srgb(0.1, 0.1, 0.1); // Color for wilderness
+
     // Spawn player entities and assign starting positions
     for i in 1..=NUM_PLAYERS {
         // Generate random color for each player
@@ -55,6 +59,7 @@ pub fn setup(mut commands: Commands) {
             color,
         };
 
+        player_colors[i] = color; // Populate the color map
         board_res.tiles[start_y][start_x].owner = player_data.id;
 
         let player_entity = commands.spawn((player_data.clone(), Alive)).id();
@@ -72,7 +77,9 @@ pub fn setup(mut commands: Commands) {
         ));
     }
 
-    // Spawn tile entities
+    // Initialize TileEntityMap and spawn tiles
+    let mut tile_map = vec![vec![Entity::PLACEHOLDER; BOARD_WIDTH]; BOARD_HEIGHT];
+
     for y in 0..BOARD_HEIGHT {
         for x in 0..BOARD_WIDTH {
             let color = Color::srgb(0.1, 0.1, 0.1); // Start with all tiles gray
@@ -80,19 +87,25 @@ pub fn setup(mut commands: Commands) {
             let pos_x = (x as f32 - BOARD_WIDTH as f32 / 2.0) * TILE_SIZE;
             let pos_y = (BOARD_HEIGHT as f32 / 2.0 - y as f32) * TILE_SIZE;
 
-            commands.spawn((
-                Sprite {
-                    color,
-                    custom_size: Some(Vec2::new(TILE_SIZE - 1.0, TILE_SIZE - 1.0)),
-                    ..default()
-                },
-                Transform::from_xyz(pos_x, pos_y, 0.0),
-                TileEntity { x, y },
-            ));
+            let tile_entity = commands
+                .spawn((
+                    Sprite {
+                        color,
+                        custom_size: Some(Vec2::new(TILE_SIZE - 1.0, TILE_SIZE - 1.0)),
+                        ..default()
+                    },
+                    Transform::from_xyz(pos_x, pos_y, 0.0),
+                    TileEntity { x, y },
+                ))
+                .id();
+
+            tile_map[y][x] = tile_entity; // Populate the entity map
         }
     }
 
     commands.insert_resource(board_res);
+    commands.insert_resource(TileEntityMap(tile_map));
+    commands.insert_resource(PlayerColorMap(player_colors));
     commands.insert_resource(ActiveExpansions::default());
     commands.insert_resource(GameUpdateTimer(Timer::from_seconds(
         0.1,

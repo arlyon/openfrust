@@ -7,6 +7,14 @@ use crate::{NUM_ENTITIES, NUM_PAIRS};
 pub type PlayerId = usize;
 pub const NO_OWNER: PlayerId = 0;
 
+/// Message sent when a tile changes ownership (buffered for rendering)
+#[derive(Message)]
+pub struct TileChangeMessage {
+    pub x: usize,
+    pub y: usize,
+    pub new_owner: PlayerId,
+}
+
 /// Represents a single tile on the game board.
 #[derive(Clone, Copy, Debug)]
 pub struct Tile {
@@ -130,3 +138,11 @@ pub struct TileEntity {
 /// Timer for game updates
 #[derive(Resource)]
 pub struct GameUpdateTimer(pub Timer);
+
+/// Resource to map tile coordinates to their corresponding Sprite entity
+#[derive(Resource)]
+pub struct TileEntityMap(pub Vec<Vec<Entity>>);
+
+/// Resource to map PlayerId to Color for fast lookups
+#[derive(Resource)]
+pub struct PlayerColorMap(pub Vec<Color>);

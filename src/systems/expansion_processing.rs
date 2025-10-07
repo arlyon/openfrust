@@ -13,6 +13,7 @@ pub fn process_expansion_fronts(
     board: &mut Board,
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
     expansions: &mut ActiveExpansions,
+    mut tile_change_writer: MessageWriter<TileChangeMessage>,
 ) {
     let mut rng = rand::rng();
 
@@ -89,6 +90,13 @@ pub fn process_expansion_fronts(
 
                             // Conquer the tile
                             board.tiles[task.y][task.x].owner = attacker;
+
+                            // Send tile change message for rendering
+                            tile_change_writer.write(TileChangeMessage {
+                                x: task.x,
+                                y: task.y,
+                                new_owner: attacker,
+                            });
 
                             // Update tile counts and coordinate sums incrementally
                             for (_, mut player) in players.iter_mut() {

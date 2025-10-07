@@ -17,6 +17,7 @@ pub fn update_game(
     mut expansions: ResMut<ActiveExpansions>,
     mut commands: Commands,
     text_query: Query<(Entity, &PlayerInfoText)>,
+    tile_change_writer: MessageWriter<TileChangeMessage>,
 ) {
     if !timer.0.tick(time.delta()).just_finished() {
         return;
@@ -35,7 +36,7 @@ pub fn update_game(
 
     // 3. Process all expansion fronts and move borders
     // Note: Borders are now updated incrementally inside process_expansion_fronts
-    process_expansion_fronts(&mut board, &mut players, &mut expansions);
+    process_expansion_fronts(&mut board, &mut players, &mut expansions, tile_change_writer);
 
     // 4. Clear expansion fronts for pairs that no longer share a border and refund troops
     clear_disconnected_fronts(&board, &mut expansions, &mut players);

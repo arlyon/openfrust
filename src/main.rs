@@ -27,6 +27,7 @@ fn main() {
             }),
             ..default()
         }))
+        .add_message::<TileChangeMessage>()
         .add_systems(
             Startup,
             (systems::setup, systems::initial_border_calculation).chain(),
