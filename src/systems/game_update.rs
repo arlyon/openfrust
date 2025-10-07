@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 
-use super::border_calculation::recalculate_all_borders;
 use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
 use super::expansion_processing::process_expansion_fronts;
@@ -18,25 +17,27 @@ pub fn update_game(
     mut commands: Commands,
     text_query: Query<(Entity, &PlayerInfoText)>,
     tile_change_writer: MessageWriter<TileChangeMessage>,
+    player_map: Res<PlayerEntityMap>,
 ) {
     if !timer.0.tick(time.delta()).just_finished() {
         return;
     }
 
     // 1. Check for eliminations and update troop generation
-    check_eliminations_and_update_troops(
-        &mut players,
-        &mut expansions,
-        &mut commands,
-        &text_query,
-    );
+    check_eliminations_and_update_troops(&mut players, &mut expansions, &mut commands, &text_query);
 
     // 2. AI: Assign troops to expansion fronts and log active fronts
     assign_and_log_expansions(&board, &mut players, &mut expansions);
 
     // 3. Process all expansion fronts and move borders
     // Note: Borders are now updated incrementally inside process_expansion_fronts
-    process_expansion_fronts(&mut board, &mut players, &mut expansions, tile_change_writer);
+    process_expansion_fronts(
+        &mut board,
+        &mut players,
+        &mut expansions,
+        tile_change_writer,
+        &player_map,
+    );
 
     // 4. Clear expansion fronts for pairs that no longer share a border and refund troops
     clear_disconnected_fronts(&board, &mut expansions, &mut players);

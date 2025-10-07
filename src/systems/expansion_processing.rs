@@ -26,6 +26,7 @@ pub fn process_expansion_fronts(
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
     expansions: &mut ActiveExpansions,
     mut tile_change_writer: MessageWriter<TileChangeMessage>,
+    player_map: &PlayerEntityMap,
 ) {
     let mut rng = rand::rng();
 
@@ -143,13 +144,16 @@ pub fn process_expansion_fronts(
                         new_owner: *attacker,
                     });
 
-                    // Update tile counts and coordinate sums incrementally
-                    for (_, mut player) in players.iter_mut() {
-                        if player.id == *attacker {
+                    // Update tile counts and coordinate sums incrementally - O(1) lookup
+                    if let Some(attacker_entity) = player_map.0[*attacker] {
+                        if let Ok((_, mut player)) = players.get_mut(attacker_entity) {
                             player.tile_count += 1;
                             player.sum_x += task.x as u64;
                             player.sum_y += task.y as u64;
-                        } else if player.id == *defender {
+                        }
+                    }
+                    if let Some(defender_entity) = player_map.0[*defender] {
+                        if let Ok((_, mut player)) = players.get_mut(defender_entity) {
                             player.tile_count -= 1;
                             player.sum_x -= task.x as u64;
                             player.sum_y -= task.y as u64;
@@ -158,7 +162,7 @@ pub fn process_expansion_fronts(
 
                     // Update borders incrementally instead of full recalculation
                     update_borders_incremental(
-                        task.x, task.y, *old_owner, *attacker, board, players,
+                        task.x, task.y, *old_owner, *attacker, board, players, player_map,
                     );
 
                     conquered_this_tick += 1;

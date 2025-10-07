@@ -13,11 +13,14 @@ pub fn update_borders_incremental(
     new_owner: PlayerId,
     board: &Board,
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
+    player_map: &PlayerEntityMap,
 ) {
     // Remove (x, y) from old owner's border tiles if applicable
     if old_owner != NO_OWNER {
-        if let Some((_, mut old_player)) = players.iter_mut().find(|(_, p)| p.id == old_owner) {
-            old_player.border_tiles.remove(&(x, y));
+        if let Some(entity) = player_map.0[old_owner] {
+            if let Ok((_, mut old_player)) = players.get_mut(entity) {
+                old_player.border_tiles.remove(&(x, y));
+            }
         }
     }
 
@@ -28,8 +31,10 @@ pub fn update_borders_incremental(
             .any(|&(nx, ny)| board.tiles[ny][nx].owner != new_owner);
 
         if is_border {
-            if let Some((_, mut new_player)) = players.iter_mut().find(|(_, p)| p.id == new_owner) {
-                new_player.border_tiles.insert((x, y));
+            if let Some(entity) = player_map.0[new_owner] {
+                if let Ok((_, mut new_player)) = players.get_mut(entity) {
+                    new_player.border_tiles.insert((x, y));
+                }
             }
         }
     }
@@ -47,13 +52,13 @@ pub fn update_borders_incremental(
             .iter()
             .any(|&(nnx, nny)| board.tiles[nny][nnx].owner != neighbor_owner);
 
-        if let Some((_, mut neighbor_player)) =
-            players.iter_mut().find(|(_, p)| p.id == neighbor_owner)
-        {
-            if is_neighbor_border {
-                neighbor_player.border_tiles.insert((nx, ny));
-            } else {
-                neighbor_player.border_tiles.remove(&(nx, ny));
+        if let Some(entity) = player_map.0[neighbor_owner] {
+            if let Ok((_, mut neighbor_player)) = players.get_mut(entity) {
+                if is_neighbor_border {
+                    neighbor_player.border_tiles.insert((nx, ny));
+                } else {
+                    neighbor_player.border_tiles.remove(&(nx, ny));
+                }
             }
         }
     }

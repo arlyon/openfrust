@@ -146,3 +146,7 @@ pub struct TileEntityMap(pub Vec<Vec<Entity>>);
 /// Resource to map PlayerId to Color for fast lookups
 #[derive(Resource)]
 pub struct PlayerColorMap(pub Vec<Color>);
+
+/// Resource to map PlayerId to Entity for O(1) lookups
+#[derive(Resource)]
+pub struct PlayerEntityMap(pub Vec<Option<Entity>>);

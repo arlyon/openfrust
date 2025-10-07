@@ -26,9 +26,11 @@ pub fn setup(mut commands: Commands) {
 
     let mut board_res = Board { tiles: board };
 
-    // Initialize PlayerColorMap
+    // Initialize PlayerColorMap and PlayerEntityMap
     let mut player_colors = vec![Color::srgb(0.1, 0.1, 0.1); NUM_PLAYERS + 1];
     player_colors[NO_OWNER] = Color::srgb(0.1, 0.1, 0.1); // Color for wilderness
+
+    let mut player_entity_map = vec![None; NUM_PLAYERS + 1];
 
     // Spawn player entities and assign starting positions
     for i in 1..=NUM_PLAYERS {
@@ -52,7 +54,7 @@ pub fn setup(mut commands: Commands) {
             id: i,
             char: ((i % 26) as u8 + b'A') as char,
             troops: 1000,
-            tile_count: 1, // Each player starts with one tile
+            tile_count: 1,         // Each player starts with one tile
             sum_x: start_x as u64, // Initialize with starting position
             sum_y: start_y as u64, // Initialize with starting position
             border_tiles: HashSet::new(),
@@ -63,6 +65,7 @@ pub fn setup(mut commands: Commands) {
         board_res.tiles[start_y][start_x].owner = player_data.id;
 
         let player_entity = commands.spawn((player_data.clone(), Alive)).id();
+        player_entity_map[i] = Some(player_entity); // Populate the entity map
 
         // Spawn player info text
         commands.spawn((
@@ -106,6 +109,7 @@ pub fn setup(mut commands: Commands) {
     commands.insert_resource(board_res);
     commands.insert_resource(TileEntityMap(tile_map));
     commands.insert_resource(PlayerColorMap(player_colors));
+    commands.insert_resource(PlayerEntityMap(player_entity_map));
     commands.insert_resource(ActiveExpansions::default());
     commands.insert_resource(GameUpdateTimer(Timer::from_seconds(
         0.1,
