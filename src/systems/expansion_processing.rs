@@ -9,8 +9,6 @@ use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE};
 /// Process all expansion fronts and move borders based on relative troop counts
 #[tracing::instrument(skip_all)]
 pub fn process_expansion_fronts(board: &mut Board, expansions: &mut ActiveExpansions) {
-    let _span = tracing::info_span!("process_expansion_fronts").entered();
-
     let mut rng = rand::rng();
 
     // Process each border pair
@@ -41,6 +39,7 @@ pub fn process_expansion_fronts(board: &mut Board, expansions: &mut ActiveExpans
 
                 // If queue is empty, seed it with border tiles
                 if queue.is_empty() {
+                    let _span = tracing::info_span!("seed_queue").entered();
                     for y in 0..BOARD_HEIGHT {
                         for x in 0..BOARD_WIDTH {
                             if board.tiles[y][x].owner == attacker {

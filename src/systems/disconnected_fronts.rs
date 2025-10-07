@@ -11,8 +11,6 @@ pub fn clear_disconnected_fronts(
     expansions: &mut ActiveExpansions,
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
 ) {
-    let _span = tracing::info_span!("clear_disconnected_fronts").entered();
-
     for a in 0..crate::NUM_ENTITIES {
         for b in (a + 1)..crate::NUM_ENTITIES {
             let net_troops = expansions.get_net_troops(a, b);

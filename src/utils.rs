@@ -1,6 +1,7 @@
 use crate::types::{Board, PlayerId};
 use crate::{BOARD_HEIGHT, BOARD_WIDTH};
 
+#[tracing::instrument(skip(board))]
 pub fn count_tiles(board: &Board, player_id: PlayerId) -> usize {
     board
         .tiles
