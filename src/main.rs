@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use rand::Rng;
 use rand::seq::{IndexedRandom, SliceRandom};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 // --- GAME CONSTANTS ---
 const BOARD_WIDTH: usize = 300;
@@ -10,6 +10,7 @@ const BOARD_HEIGHT: usize = 300;
 const NUM_PLAYERS: usize = 5;
 const TILE_SIZE: f32 = 4.0;
 const TROOPS_PER_TILE_INCREASE: f32 = 0.5;
+const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 
 // --- DATA STRUCTURES ---
 
@@ -20,7 +21,12 @@ const NO_OWNER: PlayerId = 0;
 #[derive(Clone, Copy, Debug)]
 struct Tile {
     owner: PlayerId,
+    /// Terrain difficulty multiplier (1.0 = normal)
+    terrain_difficulty: f32,
 }
+
+/// Key for expansion fronts between two players
+type ExpansionKey = (PlayerId, PlayerId);
 
 /// Represents a player in the game.
 #[derive(Debug, Clone)]
@@ -44,11 +50,25 @@ struct Players {
     list: Vec<PlayerData>,
 }
 
+/// Resource tracking all active expansion fronts
+#[derive(Resource, Default)]
+struct ActiveExpansions {
+    /// Maps (attacker_id, attackee_id) to number of troops pushing that border
+    /// attackee_id = 0 means expanding into empty space
+    fronts: HashMap<ExpansionKey, u32>,
+}
+
 /// Component for tile entities
 #[derive(Component)]
 struct TileEntity {
     x: usize,
     y: usize,
+}
+
+/// Component for player info text
+#[derive(Component)]
+struct PlayerInfoText {
+    player_id: PlayerId,
 }
 
 /// Timer for game updates
@@ -61,7 +81,16 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 
     let mut rng = rand::rng();
-    let board = vec![vec![Tile { owner: NO_OWNER }; BOARD_WIDTH]; BOARD_HEIGHT];
+    let board = vec![
+        vec![
+            Tile {
+                owner: NO_OWNER,
+                terrain_difficulty: 1.0,
+            };
+            BOARD_WIDTH
+        ];
+        BOARD_HEIGHT
+    ];
 
     let player_chars = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     let player_colors = [
@@ -129,6 +158,7 @@ fn setup(mut commands: Commands) {
 
     commands.insert_resource(board_res);
     commands.insert_resource(players_res);
+    commands.insert_resource(ActiveExpansions::default());
     commands.insert_resource(GameUpdateTimer(Timer::from_seconds(
         0.1,
         TimerMode::Repeating,
@@ -141,6 +171,7 @@ fn update_game(
     mut timer: ResMut<GameUpdateTimer>,
     mut board: ResMut<Board>,
     mut players: ResMut<Players>,
+    mut expansions: ResMut<ActiveExpansions>,
 ) {
     if !timer.0.tick(time.delta()).just_finished() {
         return;
@@ -148,34 +179,49 @@ fn update_game(
 
     let mut rng = rand::rng();
 
+    // 1. Update troop generation and AI decisions
     for i in 0..players.list.len() {
         let player_id = players.list[i].id;
 
-        // 1. Gain troops based on number of tiles owned.
+        // Gain troops based on number of tiles owned.
         let tiles_owned = count_tiles(&board, player_id);
         let new_troops = ((tiles_owned as f32 * TROOPS_PER_TILE_INCREASE) as u32).max(1);
-        let old_troops = players.list[i].troops;
         players.list[i].troops += new_troops;
 
-        bevy::log::info!(
-            "updating {}[{}] from {} by {} to {}",
+        bevy::log::debug!(
+            "Player {} [{}]: {} troops (+{})",
             player_id,
             tiles_owned,
-            old_troops,
-            new_troops,
-            players.list[i].troops
+            players.list[i].troops,
+            new_troops
         );
 
-        // 2. AI: Expand into empty space first, then attack enemies.
+        // AI: Assign troops to expansion fronts
         if players.list[i].troops > 50 {
-            if !attempt_expansion(&mut board, &mut players, player_id, &mut rng) {
-                // If no empty space to expand into, attack enemies
-                if players.list[i].troops > 500 && rng.random_bool(0.25) {
-                    attempt_attack(&mut board, &mut players, player_id, &mut rng);
-                }
-            }
+            assign_expansion_troops(&board, &mut players, &mut expansions, player_id);
         }
     }
+
+    // 2. Log active expansion fronts
+    if !expansions.fronts.is_empty() {
+        bevy::log::info!("Active expansion fronts:");
+        for (&(attacker, defender), &troops) in &expansions.fronts {
+            let defender_name = if defender == NO_OWNER {
+                "Empty".to_string()
+            } else {
+                format!("Player {}", defender)
+            };
+            bevy::log::info!(
+                "  Player {} -> {}: {} troops",
+                attacker,
+                defender_name,
+                troops
+            );
+        }
+    }
+
+    // 3. Process all expansion fronts and move borders
+    process_expansion_fronts(&mut board, &mut players, &mut expansions);
 
     recalculate_all_borders(&mut board, &mut players);
 }
@@ -219,79 +265,107 @@ fn display_stats(board: Res<Board>, players: Res<Players>) {
 
 // --- HELPER FUNCTIONS ---
 
-/// AI attempts to expand into empty (unclaimed) territory.
-/// Returns true if expansion was attempted, false if no empty neighbors exist.
-fn attempt_expansion(
-    board: &mut Board,
+/// AI assigns troops to expansion fronts based on border neighbors
+fn assign_expansion_troops(
+    board: &Board,
     players: &mut Players,
+    expansions: &mut ActiveExpansions,
     player_id: PlayerId,
-    rng: &mut rand::rngs::ThreadRng,
-) -> bool {
+) {
     let player = &players.list[player_id - 1];
     if player.border_tiles.is_empty() || player.troops < 10 {
-        return false;
-    }
-
-    // Find all empty neighbors from border tiles
-    let mut empty_neighbors = Vec::new();
-    for &(bx, by) in &player.border_tiles {
-        for (nx, ny) in get_neighbors(bx, by) {
-            if board.tiles[ny][nx].owner == NO_OWNER {
-                empty_neighbors.push((nx, ny));
-            }
-        }
-    }
-
-    if empty_neighbors.is_empty() {
-        return false;
-    }
-
-    // Pick a random empty tile and claim it
-    if let Some(&(target_x, target_y)) = empty_neighbors.choose(rng) {
-        let expansion_cost = 10;
-        players.list[player_id - 1].troops -= expansion_cost;
-        board.tiles[target_y][target_x].owner = player_id;
-        return true;
-    }
-
-    false
-}
-
-fn attempt_attack(
-    board: &mut Board,
-    players: &mut Players,
-    attacker_id: PlayerId,
-    rng: &mut rand::rngs::ThreadRng,
-) {
-    let attacker = &players.list[attacker_id - 1];
-    if attacker.border_tiles.is_empty() {
         return;
     }
 
-    let border_coords: Vec<&(usize, usize)> = attacker.border_tiles.iter().collect();
-    let &(start_x, start_y) = border_coords.choose(rng).unwrap();
+    // Count neighbors for each border type
+    let mut neighbor_counts: HashMap<PlayerId, usize> = HashMap::new();
 
-    let neighbors = get_neighbors(*start_x, *start_y);
-    let enemy_neighbors: Vec<(usize, usize)> = neighbors
-        .into_iter()
-        .filter(|&(nx, ny)| {
-            board.tiles[ny][nx].owner != attacker_id && board.tiles[ny][nx].owner != NO_OWNER
-        })
-        .collect();
-
-    if let Some(&(target_x, target_y)) = enemy_neighbors.choose(rng) {
-        let defender_id = board.tiles[target_y][target_x].owner;
-
-        let attack_force = players.list[attacker_id - 1].troops / 2;
-        players.list[attacker_id - 1].troops -= attack_force;
-
-        if attack_force > 100 {
-            board.tiles[target_y][target_x].owner = attacker_id;
-            if defender_id != NO_OWNER {
-                players.list[defender_id - 1].troops += 50;
+    for &(bx, by) in &player.border_tiles {
+        for (nx, ny) in get_neighbors(bx, by) {
+            let neighbor_owner = board.tiles[ny][nx].owner;
+            if neighbor_owner != player_id {
+                *neighbor_counts.entry(neighbor_owner).or_insert(0) += 1;
             }
         }
     }
+
+    if neighbor_counts.is_empty() {
+        return;
+    }
+
+    // Assign half of available troops to expansion fronts proportionally
+    let troops_to_assign = player.troops / 2;
+    let total_border_length: usize = neighbor_counts.values().sum();
+
+    for (neighbor_id, border_length) in neighbor_counts {
+        let proportion = border_length as f32 / total_border_length as f32;
+        let troops = (troops_to_assign as f32 * proportion) as u32;
+
+        if troops > 0 {
+            let key = (player_id, neighbor_id);
+            *expansions.fronts.entry(key).or_insert(0) += troops;
+            players.list[player_id - 1].troops -= troops;
+        }
+    }
+}
+
+/// Process all expansion fronts and move borders based on relative troop counts
+fn process_expansion_fronts(
+    board: &mut Board,
+    players: &mut Players,
+    expansions: &mut ActiveExpansions,
+) {
+    // For each pair of players with a shared border, calculate net force
+    let mut border_velocities: HashMap<ExpansionKey, i32> = HashMap::new();
+
+    for (&(attacker, defender), &troops) in &expansions.fronts {
+        let forward_key = (attacker, defender);
+        let reverse_key = (defender, attacker);
+
+        let forward_troops = troops as i32;
+        let reverse_troops = expansions.fronts.get(&reverse_key).copied().unwrap_or(0) as i32;
+
+        // Net velocity: positive means attacker is winning
+        let net_velocity = forward_troops - reverse_troops;
+        border_velocities.insert(forward_key, net_velocity);
+    }
+
+    // Apply border movements based on velocities
+    for (&(attacker, defender), &velocity) in &border_velocities {
+        if velocity <= 0 {
+            continue; // Only process winning side once
+        }
+
+        // Calculate how many tiles to move based on velocity
+        let tiles_to_move = (velocity as f32 * EXPANSION_RATE_BASE / 100.0).max(0.1) as usize;
+
+        // Find all border tiles where attacker touches defender
+        let mut contested_tiles = Vec::new();
+        if let Some(attacker_data) = players.list.get(attacker - 1) {
+            for &(bx, by) in &attacker_data.border_tiles {
+                for (nx, ny) in get_neighbors(bx, by) {
+                    if board.tiles[ny][nx].owner == defender {
+                        contested_tiles.push((nx, ny));
+                    }
+                }
+            }
+        }
+
+        // Move tiles evenly along the border
+        let tiles_to_claim = tiles_to_move.min(contested_tiles.len());
+        for &(x, y) in contested_tiles.iter().take(tiles_to_claim) {
+            board.tiles[y][x].owner = attacker;
+        }
+    }
+
+    // Reduce troop counts for each tick (troops are consumed as they push)
+    for (key, troops) in expansions.fronts.iter_mut() {
+        let decay_rate = (*troops as f32 * 0.1).max(1.0) as u32; // 10% per tick, minimum 1
+        *troops = troops.saturating_sub(decay_rate);
+    }
+
+    // Remove fronts with no troops left
+    expansions.fronts.retain(|_, &mut troops| troops > 0);
 }
 
 fn count_tiles(board: &Board, player_id: PlayerId) -> usize {
