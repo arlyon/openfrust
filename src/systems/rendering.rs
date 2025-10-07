@@ -12,8 +12,6 @@ pub fn update_tiles(
     color_map: Res<PlayerColorMap>,
     mut sprite_query: Query<&mut Sprite>,
 ) {
-    let _span = tracing::info_span!("update_tiles").entered();
-
     for message in tile_change_reader.read() {
         // 1. Get the entity for the changed tile in O(1)
         let tile_entity = tile_map.0[message.y][message.x];
