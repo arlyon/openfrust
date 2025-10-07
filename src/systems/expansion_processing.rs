@@ -8,7 +8,11 @@ use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE};
 
 /// Process all expansion fronts and move borders based on relative troop counts
 #[tracing::instrument(skip_all)]
-pub fn process_expansion_fronts(board: &mut Board, expansions: &mut ActiveExpansions) {
+pub fn process_expansion_fronts(
+    board: &mut Board,
+    players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
+    expansions: &mut ActiveExpansions,
+) {
     let mut rng = rand::rng();
 
     // Process each border pair
@@ -61,6 +65,16 @@ pub fn process_expansion_fronts(board: &mut Board, expansions: &mut ActiveExpans
                         if board.tiles[task.y][task.x].owner == defender {
                             // Conquer the tile
                             board.tiles[task.y][task.x].owner = attacker;
+
+                            // Update tile counts incrementally
+                            for (_, mut player) in players.iter_mut() {
+                                if player.id == attacker {
+                                    player.tile_count += 1;
+                                } else if player.id == defender {
+                                    player.tile_count -= 1;
+                                }
+                            }
+
                             conquered_this_tick += 1;
                             newly_conquered.push((task.x, task.y));
                         }

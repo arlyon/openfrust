@@ -24,7 +24,6 @@ pub fn update_game(
 
     // 1. Check for eliminations and update troop generation
     check_eliminations_and_update_troops(
-        &board,
         &mut players,
         &mut expansions,
         &mut commands,
@@ -35,7 +34,7 @@ pub fn update_game(
     assign_and_log_expansions(&board, &mut players, &mut expansions);
 
     // 3. Process all expansion fronts and move borders
-    process_expansion_fronts(&mut board, &mut expansions);
+    process_expansion_fronts(&mut board, &mut players, &mut expansions);
 
     // 4. Recalculate borders
     recalculate_all_borders(&board, &mut players);

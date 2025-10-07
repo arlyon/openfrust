@@ -21,6 +21,7 @@ pub struct PlayerData {
     pub id: PlayerId,
     pub char: char,
     pub troops: u32,
+    pub tile_count: usize,
     pub border_tiles: HashSet<(usize, usize)>,
     pub color: Color,
 }

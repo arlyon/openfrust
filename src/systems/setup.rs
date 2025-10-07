@@ -39,6 +39,7 @@ pub fn setup(mut commands: Commands) {
             id: i,
             char: ((i % 26) as u8 + b'A') as char,
             troops: 1000,
+            tile_count: 1, // Each player starts with one tile
             border_tiles: HashSet::new(),
             color,
         };
