@@ -1,3 +1,4 @@
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use bevy_ecs_tilemap::TilemapPlugin;
@@ -7,6 +8,7 @@ mod systems;
 mod types;
 mod utils;
 
+use iyes_perf_ui::PerfUiPlugin;
 // Re-export types for convenience
 pub use types::*;
 
@@ -33,7 +35,9 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest()),
             TilemapPlugin,
+            FrameTimeDiagnosticsPlugin::default(),
             PanCamPlugin::default(),
+            PerfUiPlugin,
         ))
         .add_message::<TileChangeMessage>()
         .insert_resource(Time::<Fixed>::from_hz(10.0))

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 use bevy_pancam::PanCam;
+use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use rand::Rng;
 
 use crate::types::*;
@@ -12,6 +13,7 @@ use crate::{BOARD_HEIGHT, BOARD_WIDTH, NUM_PLAYERS, TILE_SIZE};
 pub fn setup(mut commands: Commands) {
     // Spawn camera with PanCam controls
     commands.spawn((Camera2d, PanCam::default()));
+    commands.spawn(PerfUiDefaultEntries::default());
 
     let mut rng = rand::rng();
     let mut board_res = Board::new(BOARD_WIDTH, BOARD_HEIGHT);
