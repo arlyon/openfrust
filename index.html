@@ -1,0 +1,25 @@
+<html>
+    <head>
+        <!--<link data-trunk rel="scss" href="path/to/index.scss" />-->
+        <link
+            data-trunk
+            rel="rust"
+            data-wasm-opt-params="--enable-bulk-memory-opt --enable-nontrapping-float-to-int --enable-threads"
+        />
+    </head>
+    <main>
+        <canvas id="bevy-canvas" style="position: absolute; top: 0; left: 0" />
+    </main>
+    <script>
+        const htmlCanvas = document.querySelector("#bevy-canvas");
+
+        window.addEventListener("resize", resizeCanvas, false);
+        resizeCanvas();
+
+        function resizeCanvas() {
+            htmlCanvas.style = "position: absolute; top: 0; left: 0;";
+            htmlCanvas.width = window.innerWidth;
+            htmlCanvas.height = window.innerHeight;
+        }
+    </script>
+</html>

@@ -28,6 +28,7 @@ fn main() {
                     primary_window: Some(Window {
                         title: "OpenFrust - Bevy Edition".to_string(),
                         resolution: WindowResolution::new(800, 800),
+                        canvas: Some("#bevy-canvas".to_string()),
                         ..default()
                     }),
                     ..default()

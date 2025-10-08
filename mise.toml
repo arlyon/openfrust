@@ -1,2 +1,17 @@
 [tools]
 rust = "nightly"
+"cargo:wasm-server-runner" = "latest"
+"cargo:wasm-bindgen-cli" = "latest"
+"cargo:trunk" = "latest"
+"cargo:ubi-cli" = "latest"
+"github:TheBevyFlock/bevy_cli" = "latest"
+"ubi:TheWaWaR/simple-http-server" = "latest"
+
+[tasks.serve]
+depends = ["build-wasm"]
+run = "cd dist && simple-http-server --coep --coop --index"
+
+[tasks.build-wasm]
+run = "trunk build --release --no-default-features --features wasm"
+outputs = ["dist/*"]
+sources = ["src/**/*", "Cargo.toml"]
