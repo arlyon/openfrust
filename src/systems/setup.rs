@@ -6,7 +6,7 @@ use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use rand::Rng;
 
 use crate::types::*;
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, NUM_PLAYERS, TILE_SIZE};
+use crate::{BOARD_HEIGHT, BOARD_WIDTH, NUM_PLAYERS};
 
 /// Startup system to initialize the game
 #[tracing::instrument(skip_all)]

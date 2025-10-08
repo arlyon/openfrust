@@ -23,27 +23,27 @@ pub fn clear_disconnected_fronts(
 
             if !shares_border {
                 // Refund troops to both players
-                if a != NO_OWNER {
-                    if let Some((_, mut player)) = players.iter_mut().find(|(_, p)| p.id == a) {
-                        let refund = if net_troops > 0 { net_troops as u32 } else { 0 };
-                        player.troops += refund;
-                        if refund > 0 {
-                            bevy::log::info!("Refunded {} troops to Player {}", refund, a);
-                        }
+                if a != NO_OWNER
+                    && let Some((_, mut player)) = players.iter_mut().find(|(_, p)| p.id == a)
+                {
+                    let refund = if net_troops > 0 { net_troops as u32 } else { 0 };
+                    player.troops += refund;
+                    if refund > 0 {
+                        bevy::log::info!("Refunded {} troops to Player {}", refund, a);
                     }
                 }
 
-                if b != NO_OWNER {
-                    if let Some((_, mut player)) = players.iter_mut().find(|(_, p)| p.id == b) {
-                        let refund = if net_troops < 0 {
-                            (-net_troops) as u32
-                        } else {
-                            0
-                        };
-                        player.troops += refund;
-                        if refund > 0 {
-                            bevy::log::info!("Refunded {} troops to Player {}", refund, b);
-                        }
+                if b != NO_OWNER
+                    && let Some((_, mut player)) = players.iter_mut().find(|(_, p)| p.id == b)
+                {
+                    let refund = if net_troops < 0 {
+                        (-net_troops) as u32
+                    } else {
+                        0
+                    };
+                    player.troops += refund;
+                    if refund > 0 {
+                        bevy::log::info!("Refunded {} troops to Player {}", refund, b);
                     }
                 }
 

@@ -8,6 +8,8 @@ use crate::{NUM_ENTITIES, NUM_PAIRS};
 pub type PlayerId = usize;
 pub const NO_OWNER: PlayerId = 0;
 
+pub type LivingPlayerUpdate = (With<Alive>, Changed<PlayerData>);
+
 /// Message sent when a tile changes ownership (buffered for rendering)
 #[derive(Message)]
 pub struct TileChangeMessage {

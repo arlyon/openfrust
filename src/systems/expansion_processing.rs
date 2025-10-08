@@ -81,38 +81,35 @@ pub fn process_expansion_fronts(
     // TODO: this is actually still very expensive, around 60ms / frame
     for (attacker, defender, tiles_to_move) in conquests {
         let key = (attacker, defender);
-        let queue = expansions
-            .conquer_queues
-            .entry(key)
-            .or_insert_with(BinaryHeap::new);
+        let queue = expansions.conquer_queues.entry(key).or_default();
 
         // If queue is empty, seed it with border tiles
-        if queue.is_empty() {
-            if let Some((_, border_tiles)) = player_data.iter().find(|(id, _)| *id == attacker) {
-                for &(bx, by) in border_tiles {
-                    // Check neighbors of this border tile
-                    for (nx, ny) in get_neighbors(bx, by) {
-                        if board.get(nx, ny).owner() as usize == defender {
-                            // This neighbor tile can be conquered - add to queue
-                            let mut num_owned_by_attacker = 0;
-                            for (nnx, nny) in get_neighbors(nx, ny) {
-                                if board.get(nnx, nny).owner() as usize == attacker {
-                                    num_owned_by_attacker += 1;
-                                }
+        if queue.is_empty()
+            && let Some((_, border_tiles)) = player_data.iter().find(|(id, _)| *id == attacker)
+        {
+            for &(bx, by) in border_tiles {
+                // Check neighbors of this border tile
+                for (nx, ny) in get_neighbors(bx, by) {
+                    if board.get(nx, ny).owner() as usize == defender {
+                        // This neighbor tile can be conquered - add to queue
+                        let mut num_owned_by_attacker = 0;
+                        for (nnx, nny) in get_neighbors(nx, ny) {
+                            if board.get(nnx, nny).owner() as usize == attacker {
+                                num_owned_by_attacker += 1;
                             }
-
-                            let terrain_mag = board.get(nx, ny).terrain_difficulty();
-                            let random_factor = rng.random_range(10..=17);
-                            let priority = (random_factor as f32
-                                * (1.0 - num_owned_by_attacker as f32 * 0.5 + terrain_mag / 2.0))
-                                as u32;
-
-                            queue.push(ConquerTask {
-                                priority,
-                                x: nx,
-                                y: ny,
-                            });
                         }
+
+                        let terrain_mag = board.get(nx, ny).terrain_difficulty();
+                        let random_factor = rng.random_range(10..=17);
+                        let priority = (random_factor as f32
+                            * (1.0 - num_owned_by_attacker as f32 * 0.5 + terrain_mag / 2.0))
+                            as u32;
+
+                        queue.push(ConquerTask {
+                            priority,
+                            x: nx,
+                            y: ny,
+                        });
                     }
                 }
             }
@@ -139,19 +136,19 @@ pub fn process_expansion_fronts(
                     });
 
                     // Update tile counts and coordinate sums incrementally - O(1) lookup
-                    if let Some(attacker_entity) = player_map.0[attacker] {
-                        if let Ok((_, mut player)) = players.get_mut(attacker_entity) {
-                            player.tile_count += 1;
-                            player.sum_x += task.x as u64;
-                            player.sum_y += task.y as u64;
-                        }
+                    if let Some(attacker_entity) = player_map.0[attacker]
+                        && let Ok((_, mut player)) = players.get_mut(attacker_entity)
+                    {
+                        player.tile_count += 1;
+                        player.sum_x += task.x as u64;
+                        player.sum_y += task.y as u64;
                     }
-                    if let Some(defender_entity) = player_map.0[defender] {
-                        if let Ok((_, mut player)) = players.get_mut(defender_entity) {
-                            player.tile_count -= 1;
-                            player.sum_x -= task.x as u64;
-                            player.sum_y -= task.y as u64;
-                        }
+                    if let Some(defender_entity) = player_map.0[defender]
+                        && let Ok((_, mut player)) = players.get_mut(defender_entity)
+                    {
+                        player.tile_count -= 1;
+                        player.sum_x -= task.x as u64;
+                        player.sum_y -= task.y as u64;
                     }
 
                     // Update borders incrementally instead of full recalculation

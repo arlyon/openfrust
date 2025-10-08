@@ -16,25 +16,22 @@ pub fn update_borders_incremental(
     player_map: &PlayerEntityMap,
 ) {
     // Remove (x, y) from old owner's border tiles if applicable
-    if old_owner != NO_OWNER {
-        if let Some(entity) = player_map.0[old_owner] {
-            if let Ok((_, mut old_player)) = players.get_mut(entity) {
+    if old_owner != NO_OWNER
+        && let Some(entity) = player_map.0[old_owner]
+            && let Ok((_, mut old_player)) = players.get_mut(entity) {
                 old_player.border_tiles.remove(&(x, y));
             }
-        }
-    }
 
     // Check if (x, y) is now a border tile for the new owner
     if new_owner != NO_OWNER {
         let is_border =
             get_neighbors(x, y).any(|(nx, ny)| board.get(nx, ny).owner() as usize != new_owner);
 
-        if is_border {
-            if let Some(entity) = player_map.0[new_owner] {
-                if let Ok((_, mut new_player)) = players.get_mut(entity) {
-                    new_player.border_tiles.insert((x, y));
-                }
-            }
+        if is_border
+            && let Some(entity) = player_map.0[new_owner]
+            && let Ok((_, mut new_player)) = players.get_mut(entity)
+        {
+            new_player.border_tiles.insert((x, y));
         }
     }
 
@@ -50,13 +47,13 @@ pub fn update_borders_incremental(
         let is_neighbor_border = get_neighbors(nx, ny)
             .any(|(nnx, nny)| board.get(nnx, nny).owner() as usize != neighbor_owner);
 
-        if let Some(entity) = player_map.0[neighbor_owner] {
-            if let Ok((_, mut neighbor_player)) = players.get_mut(entity) {
-                if is_neighbor_border {
-                    neighbor_player.border_tiles.insert((nx, ny));
-                } else {
-                    neighbor_player.border_tiles.remove(&(nx, ny));
-                }
+        if let Some(entity) = player_map.0[neighbor_owner]
+            && let Ok((_, mut neighbor_player)) = players.get_mut(entity)
+        {
+            if is_neighbor_border {
+                neighbor_player.border_tiles.insert((nx, ny));
+            } else {
+                neighbor_player.border_tiles.remove(&(nx, ny));
             }
         }
     }
@@ -78,10 +75,9 @@ pub fn initial_border_calculation(
             if owner_id != NO_OWNER {
                 let is_border = get_neighbors(x, y)
                     .any(|(nx, ny)| board.get(nx, ny).owner() as usize != owner_id);
-                if is_border {
-                    if let Some(mut player) = players.iter_mut().find(|p| p.id == owner_id) {
-                        player.border_tiles.insert((x, y));
-                    }
+                if is_border && let Some(mut player) = players.iter_mut().find(|p| p.id == owner_id)
+                {
+                    player.border_tiles.insert((x, y));
                 }
             }
         }

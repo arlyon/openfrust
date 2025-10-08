@@ -34,7 +34,7 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest()),
             FrameTimeDiagnosticsPlugin::default(),
-            PanCamPlugin::default(),
+            PanCamPlugin,
             PerfUiPlugin,
         ))
         .add_message::<TileChangeMessage>()

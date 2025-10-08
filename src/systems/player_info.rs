@@ -7,7 +7,7 @@ use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
 #[tracing::instrument(skip_all)]
 pub fn update_player_info(
     board: Res<Board>,
-    players: Query<(Entity, &PlayerData), (With<Alive>, Changed<PlayerData>)>,
+    players: Query<(Entity, &PlayerData), LivingPlayerUpdate>,
     mut text_query: Query<(&crate::PlayerInfoText, &mut Text2d, &mut Transform)>,
 ) {
     if players.is_empty() && !board.is_changed() {

@@ -26,7 +26,7 @@ pub fn update_game(
     let pool = ComputeTaskPool::get();
 
     // 2. AI: Assign troops to expansion fronts and log active fronts
-    assign_and_log_expansions(&board, &mut players, &mut expansions, &pool);
+    assign_and_log_expansions(&board, &mut players, &mut expansions, pool);
 
     // 3. Process all expansion fronts and move borders
     // Note: Borders are now updated incrementally inside process_expansion_fronts
