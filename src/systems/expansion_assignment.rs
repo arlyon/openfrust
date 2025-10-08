@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy::tasks::{ComputeTaskPool, ParallelSlice, ParallelSliceMut};
+use bevy::tasks::{ComputeTaskPool, ParallelSlice};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -92,7 +92,7 @@ fn calculate_player_assignments(
 
     for &(bx, by) in &player.border_tiles {
         for (nx, ny) in get_neighbors(bx, by) {
-            let neighbor_owner = board.tiles[ny][nx].owner;
+            let neighbor_owner = board.get(nx, ny).owner() as usize;
             if neighbor_owner != player.id && neighbor_owner == NO_OWNER {
                 *neighbor_counts.entry(neighbor_owner).or_insert(0) += 1;
             }

@@ -16,6 +16,7 @@ strip = true
 
 [dependencies]
 bevy = { version = "0.17.2", features = ["trace", "trace_tracy", "wayland"] }
+bitfield = "0.19.2"
 itertools = "0.14.0"
 rand = "0.9.2"
 tracing = "0.1.41"

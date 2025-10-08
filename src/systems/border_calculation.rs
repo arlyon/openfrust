@@ -28,7 +28,7 @@ pub fn update_borders_incremental(
     if new_owner != NO_OWNER {
         let is_border = get_neighbors(x, y)
             .iter()
-            .any(|&(nx, ny)| board.tiles[ny][nx].owner != new_owner);
+            .any(|&(nx, ny)| board.get(nx, ny).owner() as usize != new_owner);
 
         if is_border {
             if let Some(entity) = player_map.0[new_owner] {
@@ -41,7 +41,7 @@ pub fn update_borders_incremental(
 
     // Update neighbors of the conquered tile
     for (nx, ny) in get_neighbors(x, y) {
-        let neighbor_owner = board.tiles[ny][nx].owner;
+        let neighbor_owner = board.get(nx, ny).owner() as usize;
 
         if neighbor_owner == NO_OWNER {
             continue;
@@ -50,7 +50,7 @@ pub fn update_borders_incremental(
         // Check if neighbor is now a border tile
         let is_neighbor_border = get_neighbors(nx, ny)
             .iter()
-            .any(|&(nnx, nny)| board.tiles[nny][nnx].owner != neighbor_owner);
+            .any(|&(nnx, nny)| board.get(nnx, nny).owner() as usize != neighbor_owner);
 
         if let Some(entity) = player_map.0[neighbor_owner] {
             if let Ok((_, mut neighbor_player)) = players.get_mut(entity) {
@@ -76,42 +76,13 @@ pub fn initial_border_calculation(
 
     for y in 0..BOARD_HEIGHT {
         for x in 0..BOARD_WIDTH {
-            let owner_id = board.tiles[y][x].owner;
+            let owner_id = board.get(x, y).owner() as usize;
             if owner_id != NO_OWNER {
                 let is_border = get_neighbors(x, y)
                     .iter()
-                    .any(|&(nx, ny)| board.tiles[ny][nx].owner != owner_id);
+                    .any(|&(nx, ny)| board.get(nx, ny).owner() as usize != owner_id);
                 if is_border {
                     if let Some(mut player) = players.iter_mut().find(|p| p.id == owner_id) {
-                        player.border_tiles.insert((x, y));
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Recalculates all player borders based on current tile ownership
-#[tracing::instrument(skip_all)]
-pub fn recalculate_all_borders(
-    board: &Board,
-    players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
-) {
-    for (_, mut player) in players.iter_mut() {
-        player.border_tiles.clear();
-    }
-
-    for y in 0..BOARD_HEIGHT {
-        for x in 0..BOARD_WIDTH {
-            let owner_id = board.tiles[y][x].owner;
-            if owner_id != NO_OWNER {
-                let is_border = get_neighbors(x, y)
-                    .iter()
-                    .any(|&(nx, ny)| board.tiles[ny][nx].owner != owner_id);
-                if is_border {
-                    if let Some((_, mut player)) =
-                        players.iter_mut().find(|(_, p)| p.id == owner_id)
-                    {
                         player.border_tiles.insert((x, y));
                     }
                 }

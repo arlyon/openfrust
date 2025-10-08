@@ -1,15 +1,4 @@
-use crate::types::{Board, PlayerId};
 use crate::{BOARD_HEIGHT, BOARD_WIDTH};
-
-#[tracing::instrument(skip(board))]
-pub fn count_tiles(board: &Board, player_id: PlayerId) -> usize {
-    board
-        .tiles
-        .iter()
-        .flatten()
-        .filter(|tile| tile.owner == player_id)
-        .count()
-}
 
 pub fn get_neighbors(x: usize, y: usize) -> Vec<(usize, usize)> {
     let mut neighbors = Vec::new();

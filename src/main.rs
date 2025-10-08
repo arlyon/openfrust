@@ -34,9 +34,6 @@ fn main() {
             (systems::setup, systems::initial_border_calculation).chain(),
         )
         .add_systems(FixedUpdate, systems::update_game)
-        .add_systems(
-            Update,
-            (systems::update_tiles, systems::update_player_info),
-        )
+        .add_systems(Update, (systems::update_tiles, systems::update_player_info))
         .run();
 }

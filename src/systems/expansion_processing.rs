@@ -4,20 +4,10 @@ use rand::Rng;
 use std::collections::BinaryHeap;
 use std::sync::{Arc, Mutex};
 
-use itertools::Itertools;
-
 use super::border_calculation::update_borders_incremental;
+use crate::EXPANSION_RATE_BASE;
 use crate::types::*;
 use crate::utils::get_neighbors;
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE};
-
-/// Captures a single tile ownership change
-struct ConquestCommand {
-    x: usize,
-    y: usize,
-    old_owner: PlayerId,
-    new_owner: PlayerId,
-}
 
 /// Process all expansion fronts and move borders based on relative troop counts
 #[tracing::instrument(skip_all)]
@@ -102,16 +92,16 @@ pub fn process_expansion_fronts(
                 for &(bx, by) in border_tiles {
                     // Check neighbors of this border tile
                     for (nx, ny) in get_neighbors(bx, by) {
-                        if board.tiles[ny][nx].owner == defender {
+                        if board.get(nx, ny).owner() as usize == defender {
                             // This neighbor tile can be conquered - add to queue
                             let mut num_owned_by_attacker = 0;
                             for (nnx, nny) in get_neighbors(nx, ny) {
-                                if board.tiles[nny][nnx].owner == attacker {
+                                if board.get(nnx, nny).owner() as usize == attacker {
                                     num_owned_by_attacker += 1;
                                 }
                             }
 
-                            let terrain_mag = board.tiles[ny][nx].terrain_difficulty;
+                            let terrain_mag = board.get(nx, ny).terrain_difficulty();
                             let random_factor = rng.random_range(10..=17);
                             let priority = (random_factor as f32
                                 * (1.0 - num_owned_by_attacker as f32 * 0.5 + terrain_mag / 2.0))
@@ -135,11 +125,11 @@ pub fn process_expansion_fronts(
         while conquered_this_tick < tiles_to_move {
             if let Some(task) = queue.pop() {
                 // Double-check tile is still owned by defender
-                if board.tiles[task.y][task.x].owner == defender {
+                if board.get(task.x, task.y).owner() as usize == defender {
                     let old_owner = defender;
 
                     // Conquer the tile
-                    board.tiles[task.y][task.x].owner = attacker;
+                    board.get_mut(task.x, task.y).set_owner(attacker as u16);
 
                     // Send tile change message for rendering
                     tile_change_writer.write(TileChangeMessage {
@@ -216,17 +206,17 @@ fn add_neighbors_to_queue(
     rng: &mut rand::rngs::ThreadRng,
 ) {
     for (nx, ny) in get_neighbors(x, y) {
-        if board.tiles[ny][nx].owner == defender {
+        if board.get(nx, ny).owner() as usize == defender {
             // Count how many neighbors are owned by attacker (encourages front-line expansion)
             let mut num_owned_by_attacker = 0;
             for (nnx, nny) in get_neighbors(nx, ny) {
-                if board.tiles[nny][nnx].owner == attacker {
+                if board.get(nnx, nny).owner() as usize == attacker {
                     num_owned_by_attacker += 1;
                 }
             }
 
             // Terrain difficulty
-            let terrain_mag = board.tiles[ny][nx].terrain_difficulty;
+            let terrain_mag = board.get(nx, ny).terrain_difficulty();
 
             // Priority calculation: prefer tiles with fewer friendly neighbors (pushes front line)
             // and easier terrain

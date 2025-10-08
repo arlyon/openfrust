@@ -2,7 +2,6 @@ use bevy::prelude::*;
 
 use crate::types::*;
 use crate::utils::get_neighbors;
-use crate::{BOARD_HEIGHT, BOARD_WIDTH};
 
 /// Clear expansion fronts between players that no longer share a border and refund troops
 #[tracing::instrument(skip_all)]
@@ -71,7 +70,7 @@ fn check_players_share_border(
         if let Some((_, player_b)) = players.iter().find(|(_, p)| p.id == b) {
             for &(x, y) in &player_b.border_tiles {
                 for (nx, ny) in get_neighbors(x, y) {
-                    if board.tiles[ny][nx].owner == NO_OWNER {
+                    if board.get(nx, ny).owner() as usize == NO_OWNER {
                         return true;
                     }
                 }
@@ -85,7 +84,7 @@ fn check_players_share_border(
         if let Some((_, player_a)) = players.iter().find(|(_, p)| p.id == a) {
             for &(x, y) in &player_a.border_tiles {
                 for (nx, ny) in get_neighbors(x, y) {
-                    if board.tiles[ny][nx].owner == NO_OWNER {
+                    if board.get(nx, ny).owner() as usize == NO_OWNER {
                         return true;
                     }
                 }
@@ -98,7 +97,7 @@ fn check_players_share_border(
     if let Some((_, player_a)) = players.iter().find(|(_, p)| p.id == a) {
         for &(x, y) in &player_a.border_tiles {
             for (nx, ny) in get_neighbors(x, y) {
-                if board.tiles[ny][nx].owner == b {
+                if board.get(nx, ny).owner() as usize == b {
                     return true;
                 }
             }

@@ -13,18 +13,7 @@ pub fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 
     let mut rng = rand::rng();
-    let board = vec![
-        vec![
-            Tile {
-                owner: NO_OWNER,
-                terrain_difficulty: 1.0,
-            };
-            BOARD_WIDTH
-        ];
-        BOARD_HEIGHT
-    ];
-
-    let mut board_res = Board { tiles: board };
+    let mut board_res = Board::new(BOARD_WIDTH, BOARD_HEIGHT);
 
     // Initialize PlayerColorMap and PlayerEntityMap
     let mut player_colors = vec![Color::srgb(0.1, 0.1, 0.1); NUM_PLAYERS + 1];
@@ -45,7 +34,7 @@ pub fn setup(mut commands: Commands) {
         let (start_x, start_y) = loop {
             let x = rng.random_range(10..BOARD_WIDTH - 10);
             let y = rng.random_range(5..BOARD_HEIGHT - 5);
-            if board_res.tiles[y][x].owner == NO_OWNER {
+            if board_res.get(x, y).owner() as usize == NO_OWNER {
                 break (x, y);
             }
         };
@@ -62,7 +51,7 @@ pub fn setup(mut commands: Commands) {
         };
 
         player_colors[i] = color; // Populate the color map
-        board_res.tiles[start_y][start_x].owner = player_data.id;
+        board_res.get_mut(start_x, start_y).set_owner(player_data.id as u16);
 
         let player_entity = commands.spawn((player_data.clone(), Alive)).id();
         player_entity_map[i] = Some(player_entity); // Populate the entity map

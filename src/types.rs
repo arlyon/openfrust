@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bitfield::bitfield;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
@@ -15,12 +16,31 @@ pub struct TileChangeMessage {
     pub new_owner: PlayerId,
 }
 
-/// Represents a single tile on the game board.
-#[derive(Clone, Copy, Debug)]
-pub struct Tile {
-    pub owner: PlayerId,
-    /// Terrain difficulty multiplier (1.0 = normal)
-    pub terrain_difficulty: f32,
+bitfield! {
+    /// Represents a single tile on the game board using a compact bitfield.
+    #[derive(Clone, Copy)]
+    pub struct Tile(u16);
+    impl Debug;
+    pub u16, owner, set_owner: 11, 0;           // 12 bits for owner ID (up to 4096 players)
+    pub u8, terrain_diff, set_terrain_diff: 14, 12; // 3 bits for terrain type (8 types)
+    pub has_fallout, set_fallout: 15;           // 1 bit for fallout flag
+}
+
+impl Tile {
+    pub fn new(owner: PlayerId, terrain_difficulty: f32) -> Self {
+        let mut tile = Tile(0);
+        tile.set_owner(owner as u16);
+        // Map terrain difficulty to 0-7 range
+        let terrain_type = ((terrain_difficulty.clamp(0.5, 2.0) - 0.5) / 1.5 * 7.0) as u8;
+        tile.set_terrain_diff(terrain_type);
+        tile.set_fallout(false);
+        tile
+    }
+
+    pub fn terrain_difficulty(&self) -> f32 {
+        // Map 0-7 range back to terrain difficulty
+        0.5 + (self.terrain_diff() as f32 / 7.0) * 1.5
+    }
 }
 
 /// Represents a player in the game.
@@ -40,10 +60,41 @@ pub struct PlayerData {
 #[derive(Component)]
 pub struct Alive;
 
-/// Resource holding the game board
+/// Resource holding the game board (flattened for cache efficiency)
 #[derive(Resource)]
 pub struct Board {
-    pub tiles: Vec<Vec<Tile>>,
+    pub tiles: Vec<Tile>,
+    pub width: usize,
+    pub height: usize,
+}
+
+impl Board {
+    /// Create a new board with the given dimensions
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            tiles: vec![Tile::new(NO_OWNER, 1.0); width * height],
+            width,
+            height,
+        }
+    }
+
+    /// Get a tile at the given coordinates
+    #[inline]
+    pub fn get(&self, x: usize, y: usize) -> &Tile {
+        &self.tiles[y * self.width + x]
+    }
+
+    /// Get a mutable tile at the given coordinates
+    #[inline]
+    pub fn get_mut(&mut self, x: usize, y: usize) -> &mut Tile {
+        &mut self.tiles[y * self.width + x]
+    }
+
+    /// Get the index for the given coordinates
+    #[inline]
+    pub fn index(&self, x: usize, y: usize) -> usize {
+        y * self.width + x
+    }
 }
 
 /// Component linking player info text to player entity
