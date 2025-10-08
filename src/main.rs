@@ -15,7 +15,7 @@ pub use types::*;
 // --- GAME CONSTANTS ---
 pub const BOARD_WIDTH: usize = 4096;
 pub const BOARD_HEIGHT: usize = 2048;
-pub const NUM_PLAYERS: usize = 1000;
+pub const NUM_PLAYERS: usize = 100;
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
 pub const NUM_ENTITIES: usize = NUM_PLAYERS + 1;

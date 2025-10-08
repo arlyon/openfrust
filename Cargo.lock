@@ -3512,6 +3512,7 @@ dependencies = [
  "bevy",
  "bevy_pancam",
  "bitfield",
+ "bytemuck",
  "getrandom",
  "itertools 0.14.0",
  "iyes_perf_ui",
