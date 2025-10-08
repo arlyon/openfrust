@@ -29,6 +29,7 @@ fn main() {
                         title: "OpenFrust - Bevy Edition".to_string(),
                         resolution: WindowResolution::new(800, 800),
                         canvas: Some("#bevy-canvas".to_string()),
+                        fit_canvas_to_parent: true,
                         ..default()
                     }),
                     ..default()

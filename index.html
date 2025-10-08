@@ -7,9 +7,11 @@
             data-wasm-opt-params="--enable-bulk-memory-opt --enable-nontrapping-float-to-int --enable-threads"
         />
     </head>
-    <main>
-        <canvas id="bevy-canvas" style="position: absolute; top: 0; left: 0" />
-    </main>
+    <body style="margin: 0">
+        <main style="width: 100vw; height: 100vh">
+            <canvas id="bevy-canvas" />
+        </main>
+    </body>
     <script>
         const htmlCanvas = document.querySelector("#bevy-canvas");
 
