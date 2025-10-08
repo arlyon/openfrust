@@ -1,5 +1,6 @@
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
+use bevy::sprite_render::Material2dPlugin;
 use bevy::window::WindowResolution;
 use bevy_pancam::PanCamPlugin;
 
@@ -38,6 +39,7 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(),
             PanCamPlugin,
             PerfUiPlugin,
+            Material2dPlugin::<systems::BorderMaterial>::default(),
         ))
         .add_message::<TileChangeMessage>()
         .insert_resource(Time::<Fixed>::from_hz(10.0))
