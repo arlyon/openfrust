@@ -16,7 +16,6 @@ strip = true
 
 [dependencies]
 bevy = { version = "0.17.2", features = ["trace", "trace_tracy", "wayland"] }
-bevy_ecs_tilemap = "0.17.0-rc.1"
 bevy_pancam = "0.19.0"
 bitfield = "0.19.2"
 itertools = "0.14.0"

@@ -648,16 +648,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_ecs_tilemap"
-version = "0.17.0-rc.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45fe3fb2ea687e38e118947b3222c603534dfe793bacb9b7d0679078a6c6e8d8"
-dependencies = [
- "bevy",
- "log",
-]
-
-[[package]]
 name = "bevy_encase_derive"
 version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2677,7 +2667,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.58.0",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -3520,7 +3510,6 @@ name = "openfrust"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "bevy_ecs_tilemap",
  "bevy_pancam",
  "bitfield",
  "itertools 0.14.0",

@@ -1,7 +1,6 @@
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
-use bevy_ecs_tilemap::TilemapPlugin;
 use bevy_pancam::PanCamPlugin;
 
 mod systems;
@@ -13,11 +12,11 @@ use iyes_perf_ui::PerfUiPlugin;
 pub use types::*;
 
 // --- GAME CONSTANTS ---
-pub const BOARD_WIDTH: usize = 1024;
-pub const BOARD_HEIGHT: usize = 1024;
-pub const NUM_PLAYERS: usize = 200;
-pub const TILE_SIZE: f32 = 4.0;
+pub const BOARD_WIDTH: usize = 4096;
+pub const BOARD_HEIGHT: usize = 2048;
+pub const NUM_PLAYERS: usize = 1000;
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
+pub const TILE_SIZE: f32 = 1.0;
 pub const NUM_ENTITIES: usize = NUM_PLAYERS + 1;
 pub const NUM_PAIRS: usize = (NUM_ENTITIES * (NUM_ENTITIES - 1)) / 2;
 
@@ -34,7 +33,6 @@ fn main() {
                     ..default()
                 })
                 .set(ImagePlugin::default_nearest()),
-            TilemapPlugin,
             FrameTimeDiagnosticsPlugin::default(),
             PanCamPlugin::default(),
             PerfUiPlugin,
@@ -46,14 +44,14 @@ fn main() {
             (
                 systems::setup,
                 systems::initial_border_calculation,
-                systems::setup_tilemap,
+                systems::setup_map_texture,
             )
                 .chain(),
         )
         .add_systems(FixedUpdate, systems::update_game)
         .add_systems(
             Update,
-            (systems::update_tilemap_tiles, systems::update_player_info),
+            (systems::update_map_texture, systems::update_player_info),
         )
         .run();
 }
