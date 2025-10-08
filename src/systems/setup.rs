@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use bevy::prelude::*;
+use bevy_pancam::PanCam;
 use rand::Rng;
 
 use crate::types::*;
@@ -9,8 +10,8 @@ use crate::{BOARD_HEIGHT, BOARD_WIDTH, NUM_PLAYERS, TILE_SIZE};
 /// Startup system to initialize the game
 #[tracing::instrument(skip_all)]
 pub fn setup(mut commands: Commands) {
-    // Spawn camera
-    commands.spawn(Camera2d);
+    // Spawn camera with PanCam controls
+    commands.spawn((Camera2d, PanCam::default()));
 
     let mut rng = rand::rng();
     let mut board_res = Board::new(BOARD_WIDTH, BOARD_HEIGHT);
