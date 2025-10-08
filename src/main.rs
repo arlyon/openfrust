@@ -41,6 +41,7 @@ fn main() {
         ))
         .add_message::<TileChangeMessage>()
         .insert_resource(Time::<Fixed>::from_hz(10.0))
+        .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         .add_systems(
             Startup,
             (

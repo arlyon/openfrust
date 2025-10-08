@@ -32,17 +32,17 @@ pub fn setup(mut commands: Commands) {
 
     // Initialize PlayerColorMap and PlayerEntityMap
     let mut player_colors = vec![Color::srgb(0.1, 0.1, 0.1); NUM_PLAYERS + 1];
-    player_colors[NO_OWNER] = Color::srgb(0.1, 0.1, 0.1); // Color for wilderness
+    player_colors[NO_OWNER] = Color::srgb(0.74, 0.8, 0.53); // Color for wilderness
 
     let mut player_entity_map = vec![None; NUM_PLAYERS + 1];
 
     // Spawn player entities and assign starting positions
     for i in 1..=NUM_PLAYERS {
         // Generate random color for each player
-        let color = Color::srgb(
-            rng.random::<f32>(),
-            rng.random::<f32>(),
-            rng.random::<f32>(),
+        let color = Color::hsl(
+            rng.random::<f32>() * 360.0,
+            rng.random::<f32>() / 2.0 + 0.5,
+            0.65,
         );
 
         // Find starting position first
@@ -66,7 +66,9 @@ pub fn setup(mut commands: Commands) {
         };
 
         player_colors[i] = color; // Populate the color map
-        board_res.get_mut(start_x, start_y).set_owner(player_data.id as u16);
+        board_res
+            .get_mut(start_x, start_y)
+            .set_owner(player_data.id as u16);
 
         let player_entity = commands.spawn((player_data.clone(), Alive)).id();
         player_entity_map[i] = Some(player_entity); // Populate the entity map
@@ -75,7 +77,7 @@ pub fn setup(mut commands: Commands) {
         commands.spawn((
             Text2d::new(format!("P{}: {}", player_data.id, player_data.troops)),
             TextFont {
-                font_size: 20.0,
+                font_size: 12.0,
                 ..default()
             },
             TextColor(Color::WHITE),
