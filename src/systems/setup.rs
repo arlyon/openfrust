@@ -12,7 +12,14 @@ use crate::{BOARD_HEIGHT, BOARD_WIDTH, NUM_PLAYERS};
 #[tracing::instrument(skip_all)]
 pub fn setup(mut commands: Commands) {
     // Spawn camera with PanCam controls
-    commands.spawn((Camera2d, PanCam::default()));
+    commands.spawn((
+        Camera2d,
+        PanCam {
+            min_scale: 1.0 / 16.0,
+            max_scale: 16.0,
+            ..Default::default()
+        },
+    ));
     commands.spawn(PerfUiDefaultEntries::default());
 
     let mut rng = rand::rng();
