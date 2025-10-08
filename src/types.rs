@@ -179,21 +179,6 @@ impl ActiveExpansions {
     }
 }
 
-/// Component for tile entities
-#[derive(Component)]
-pub struct TileEntity {
-    pub x: usize,
-    pub y: usize,
-}
-
-/// Timer for game updates
-#[derive(Resource)]
-pub struct GameUpdateTimer(pub Timer);
-
-/// Resource to map tile coordinates to their corresponding Sprite entity
-#[derive(Resource)]
-pub struct TileEntityMap(pub Vec<Vec<Entity>>);
-
 /// Resource to map PlayerId to Color for fast lookups
 #[derive(Resource)]
 pub struct PlayerColorMap(pub Vec<Color>);

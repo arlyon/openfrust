@@ -3,27 +3,6 @@ use bevy::prelude::*;
 use crate::types::*;
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
 
-/// Render system to update tile colors based on TileChangeMessages
-/// Message-driven approach: only updates tiles that actually changed
-#[tracing::instrument(skip_all)]
-pub fn update_tiles(
-    mut tile_change_reader: MessageReader<TileChangeMessage>,
-    tile_map: Res<TileEntityMap>,
-    color_map: Res<PlayerColorMap>,
-    mut sprite_query: Query<&mut Sprite>,
-) {
-    for message in tile_change_reader.read() {
-        // 1. Get the entity for the changed tile in O(1)
-        let tile_entity = tile_map.0[message.y][message.x];
-
-        // 2. Get the sprite component for that specific entity
-        if let Ok(mut sprite) = sprite_query.get_mut(tile_entity) {
-            // 3. Get the new color in O(1)
-            sprite.color = color_map.0[message.new_owner];
-        }
-    }
-}
-
 /// Update player info text with troop counts and position at territory center
 #[tracing::instrument(skip_all)]
 pub fn update_player_info(

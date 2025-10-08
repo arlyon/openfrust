@@ -4,10 +4,12 @@ mod expansion_assignment;
 mod expansion_processing;
 mod game_update;
 mod player_elimination;
-mod rendering;
+mod player_info;
 mod setup;
+mod tilemap_rendering;
 
 pub use border_calculation::initial_border_calculation;
 pub use game_update::update_game;
-pub use rendering::{update_player_info, update_tiles};
+pub use player_info::update_player_info;
 pub use setup::setup;
+pub use tilemap_rendering::{setup_tilemap, update_tilemap_tiles};
