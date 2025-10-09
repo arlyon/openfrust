@@ -1,17 +1,17 @@
 use bevy::prelude::*;
 use bevy::tasks::{ComputeTaskPool, ParallelSlice};
-use std::collections::HashMap;
 use std::sync::Mutex;
 
+use super::gpu_orchestrator::AdjacencyMatrix;
 use crate::types::*;
-use crate::utils::get_neighbors;
+use crate::{NUM_ENTITIES, NO_OWNER};
 
 /// AI assigns troops to expansion fronts and logs active fronts
 #[tracing::instrument(skip_all)]
 pub fn assign_and_log_expansions(
-    board: &Board,
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
     expansions: &mut ActiveExpansions,
+    adjacency: &AdjacencyMatrix,
     pool: &ComputeTaskPool,
 ) {
     // Assign troops to expansion fronts in parallel
@@ -26,7 +26,7 @@ pub fn assign_and_log_expansions(
             for player in chunk {
                 if player.troops > 50 {
                     // Call a pure calculation function
-                    local_assignments.extend(calculate_player_assignments(board, player));
+                    local_assignments.extend(calculate_player_assignments(player, adjacency));
                 }
             }
             if !local_assignments.is_empty() {
@@ -77,43 +77,39 @@ pub fn assign_and_log_expansions(
     }
 }
 
-/// AI assigns troops to expansion fronts based on border neighbors
+/// AI assigns troops to expansion fronts based on adjacency matrix
 /// Returns a list of (attacker, defender, troops) assignments to be applied
 fn calculate_player_assignments(
-    board: &Board,
     player: &PlayerData,
+    adjacency: &AdjacencyMatrix,
 ) -> Vec<(PlayerId, PlayerId, i32)> {
-    if player.border_tiles.is_empty() || player.troops < 10 {
+    if player.troops < 10 {
         return Vec::new();
     }
 
-    // Count neighbors for each border type
-    let mut neighbor_counts: HashMap<PlayerId, usize> = HashMap::new();
-
-    for &(bx, by) in &player.border_tiles {
-        for (nx, ny) in get_neighbors(bx, by) {
-            let neighbor_owner = board.get(nx, ny).owner() as usize;
-            if neighbor_owner != player.id && neighbor_owner == NO_OWNER {
-                *neighbor_counts.entry(neighbor_owner).or_insert(0) += 1;
-            }
+    // Find all neighbors from adjacency matrix
+    let mut neighbors = Vec::new();
+    for neighbor_id in 0..NUM_ENTITIES {
+        if neighbor_id != player.id
+            && adjacency.0[player.id * NUM_ENTITIES + neighbor_id] == 1
+            && neighbor_id == NO_OWNER  // Only expand into wilderness
+        {
+            neighbors.push(neighbor_id);
         }
     }
 
-    if neighbor_counts.is_empty() {
+    if neighbors.is_empty() {
         return Vec::new();
     }
 
-    // Assign half of available troops to expansion fronts proportionally
+    // Assign half of available troops equally to all neighbors
     let troops_to_assign = player.troops / 2;
-    let total_border_length: usize = neighbor_counts.values().sum();
+    let troops_per_neighbor = troops_to_assign / neighbors.len() as u32;
 
     let mut assignments = Vec::new();
-    for (neighbor_id, border_length) in neighbor_counts {
-        let proportion = border_length as f32 / total_border_length as f32;
-        let troops = (troops_to_assign as f32 * proportion) as i32;
-
-        if troops > 0 {
-            assignments.push((player.id, neighbor_id, troops));
+    if troops_per_neighbor > 0 {
+        for neighbor_id in neighbors {
+            assignments.push((player.id, neighbor_id, troops_per_neighbor as i32));
         }
     }
     assignments

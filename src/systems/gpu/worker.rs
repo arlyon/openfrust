@@ -15,16 +15,6 @@ pub struct SimParams {
     pub num_entities: u32, // Total number of entities (players + wilderness)
 }
 
-/// Represents a single tile change detected by the GPU
-#[derive(ShaderType, Pod, Zeroable, Clone, Copy, Debug)]
-#[repr(C)]
-pub struct GpuTileChange {
-    pub x: u32,
-    pub y: u32,
-    pub new_owner: u32,
-    pub _padding: u32,
-}
-
 /// Per-player statistics calculated on the GPU
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy, Debug)]
 #[repr(C)]
@@ -47,13 +37,23 @@ impl ComputeShader for ExpansionShader {
     }
 }
 
-/// Shader definition for the results processing pass (diffing + reduction)
+/// Shader definition for the results processing pass (reduction only)
 #[derive(TypePath)]
 struct ProcessResultsShader;
 
 impl ComputeShader for ProcessResultsShader {
     fn shader() -> ShaderRef {
         "shaders/process_results.wgsl".into()
+    }
+}
+
+/// Shader definition for the border adjacency calculation pass
+#[derive(TypePath)]
+struct BorderAdjacencyShader;
+
+impl ComputeShader for BorderAdjacencyShader {
+    fn shader() -> ShaderRef {
+        "shaders/border_adjacency.wgsl".into()
     }
 }
 
@@ -106,10 +106,7 @@ impl ComputeWorker for ExpansionWorker {
             )
             // Automatically swap board_in and board_out after expansion
             .add_swap("board_in", "board_out")
-            // --- GPU DIFFING AND REDUCTION PASS ---
-            // Buffer for tile changes (generous pre-allocation: 65K changes)
-            .add_storage("changed_tiles", &vec![GpuTileChange::zeroed(); 65536])
-            .add_staging("changed_tiles", &vec![GpuTileChange::zeroed(); 65536])
+            // --- GPU REDUCTION PASS ---
             // Buffer for per-player statistics
             .add_storage(
                 "player_stats",
@@ -119,20 +116,25 @@ impl ComputeWorker for ExpansionWorker {
                 "player_stats",
                 &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES],
             )
-            // Atomic counter for number of changed tiles
-            .add_storage("changed_tiles_count", &[0u32])
-            .add_staging("changed_tiles_count", &[0u32])
-            // Process results pass: compare board_in vs board_out, calculate stats
+            // Process results pass: calculate player stats (no diffing)
             .add_pass::<ProcessResultsShader>(
                 [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
-                &[
-                    "params",
-                    "board_in",
-                    "board_out",
-                    "changed_tiles",
-                    "player_stats",
-                    "changed_tiles_count",
-                ],
+                &["params", "board_out", "player_stats"],
+            )
+            // --- BORDER ADJACENCY PASS ---
+            // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
+            .add_storage(
+                "adjacency_matrix",
+                &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+            )
+            .add_staging(
+                "adjacency_matrix",
+                &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+            )
+            // Border adjacency pass: determine which players border each other
+            .add_pass::<BorderAdjacencyShader>(
+                [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
+                &["params", "board_out", "adjacency_matrix"],
             )
             .build()
     }

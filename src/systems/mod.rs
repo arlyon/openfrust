@@ -1,4 +1,3 @@
-mod border_calculation;
 mod border_material;
 mod disconnected_fronts;
 mod expansion_assignment;
@@ -11,10 +10,9 @@ mod player_elimination;
 mod player_info;
 mod setup;
 
-pub use border_calculation::initial_border_calculation;
 pub use border_material::BorderMaterial;
 pub use gpu::{ExpansionWorker, sync_board_to_gpu};
-pub use gpu_orchestrator::gpu_orchestrator;
-pub use map_renderer::{setup_map_texture, update_map_texture};
+pub use gpu_orchestrator::{gpu_orchestrator, AdjacencyMatrix};
+pub use map_renderer::setup_map_texture;
 pub use player_info::update_player_info;
 pub use setup::setup;

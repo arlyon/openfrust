@@ -44,26 +44,23 @@ fn main() {
             // GPU compute plugins
             AppComputePlugin,
         ))
-        .add_message::<TileChangeMessage>()
         .insert_resource(Time::<Fixed>::from_hz(10.0))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         // Initialize Board before worker plugin (worker needs it during build)
         .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))
+        // Initialize adjacency matrix (populated by GPU)
+        .insert_resource(systems::AdjacencyMatrix(vec![0u32; NUM_ENTITIES * NUM_ENTITIES]))
         .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())
         .add_systems(
             Startup,
             (
                 systems::setup, // This will now populate the existing Board
                 systems::sync_board_to_gpu, // Sync populated board to GPU
-                systems::initial_border_calculation,
                 systems::setup_map_texture,
             )
                 .chain(),
         )
         .add_systems(FixedUpdate, systems::gpu_orchestrator)
-        .add_systems(
-            Update,
-            (systems::update_map_texture, systems::update_player_info),
-        )
+        .add_systems(Update, systems::update_player_info)
         .run();
 }

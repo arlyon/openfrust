@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bitfield::bitfield;
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap};
 
 use crate::{NUM_ENTITIES, NUM_PAIRS};
 
@@ -9,14 +9,6 @@ pub type PlayerId = usize;
 pub const NO_OWNER: PlayerId = 0;
 
 pub type LivingPlayerUpdate = (With<Alive>, Changed<PlayerData>);
-
-/// Message sent when a tile changes ownership (buffered for rendering)
-#[derive(Message)]
-pub struct TileChangeMessage {
-    pub x: usize,
-    pub y: usize,
-    pub new_owner: PlayerId,
-}
 
 bitfield! {
     /// Represents a single tile on the game board using a compact bitfield.
@@ -54,7 +46,6 @@ pub struct PlayerData {
     pub tile_count: usize,
     pub sum_x: u64, // Sum of x coordinates of all owned tiles (for center calculation)
     pub sum_y: u64, // Sum of y coordinates of all owned tiles (for center calculation)
-    pub border_tiles: HashSet<(usize, usize)>,
     pub color: Color,
 }
 

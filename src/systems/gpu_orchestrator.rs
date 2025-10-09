@@ -3,24 +3,25 @@ use bevy::tasks::ComputeTaskPool;
 use bevy_app_compute::prelude::*;
 use bytemuck::Zeroable;
 
-use super::border_calculation::update_borders_incremental;
 use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
-use super::gpu::{ExpansionWorker, GpuPlayerStats, GpuTileChange};
+use super::gpu::{ExpansionWorker, GpuPlayerStats};
 use super::player_elimination::check_eliminations_and_update_troops;
 use crate::types::*;
 use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
 
+/// Resource holding the adjacency matrix from the GPU
+#[derive(Resource)]
+pub struct AdjacencyMatrix(pub Vec<u32>);
+
 /// GPU-accelerated game update system - orchestrates CPU and GPU work
 #[tracing::instrument(skip_all)]
 pub fn gpu_orchestrator(
-    mut board: ResMut<Board>,
     mut players: Query<(Entity, &mut PlayerData), With<Alive>>,
     mut expansions: ResMut<ActiveExpansions>,
     mut commands: Commands,
     text_query: Query<(Entity, &PlayerInfoText)>,
-    mut tile_change_writer: MessageWriter<TileChangeMessage>,
-    player_map: Res<PlayerEntityMap>,
+    mut adjacency: ResMut<AdjacencyMatrix>,
     mut worker: ResMut<AppComputeWorker<ExpansionWorker>>,
 ) {
     // Synchronization point: wait for GPU to finish previous tick
@@ -29,88 +30,20 @@ pub fn gpu_orchestrator(
         return;
     }
 
-    // --- GPU has completed previous tick, read TINY results (not 16MB!) ---
-    let (changed_tiles, player_stats) = {
+    // --- GPU has completed previous tick, read TINY results ---
+    let player_stats = {
         let _span = tracing::info_span!("load_gpu_results").entered();
-
-        // Read the count of changed tiles
-        let change_count_vec = worker.read_vec::<u32>("changed_tiles_count");
-        let change_count = change_count_vec[0] as usize;
-
-        bevy::log::info!("GPU detected {} tile changes", change_count);
-
-        // Read ONLY the changed tiles (not the entire 16MB board!)
-        let all_changes = worker.read_vec::<GpuTileChange>("changed_tiles");
-        let changed_tiles = all_changes[..change_count.min(65536)].to_vec();
 
         // Read player statistics calculated on GPU
         let player_stats = worker.read_vec::<GpuPlayerStats>("player_stats");
 
-        (changed_tiles, player_stats)
+        // Read adjacency matrix from GPU
+        adjacency.0 = worker.read_vec::<u32>("adjacency_matrix");
+
+        player_stats
     };
 
-    // Process the small list of changes
-    process_gpu_results(
-        &changed_tiles,
-        &player_stats,
-        &mut board,
-        &mut players,
-        &mut tile_change_writer,
-        &player_map,
-    );
-
-    // --- CPU Phase: High-level game logic ---
-
-    // 1. Check for eliminations and update troop generation
-    check_eliminations_and_update_troops(&mut players, &mut expansions, &mut commands, &text_query);
-
-    let pool = ComputeTaskPool::get();
-
-    // 2. AI: Assign troops to expansion fronts
-    assign_and_log_expansions(&board, &mut players, &mut expansions, pool);
-
-    // 3. Prepare GPU data: Convert active fronts to direct lookup table
-    let front_lookup = prepare_front_lookup(&expansions);
-
-    // 4. Write data to GPU buffers
-    worker.write_slice("front_lookup", &front_lookup);
-
-    // Reset atomic counters for this tick
-    worker.write_slice(
-        "conquest_counters",
-        &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
-    );
-
-    // Reset changed_tiles_count for next tick
-    worker.write_slice("changed_tiles_count", &[0u32]);
-
-    // Reset player_stats for next tick
-    worker.write_slice(
-        "player_stats",
-        &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES],
-    );
-
-    // 5. Clear expansion fronts for disconnected borders and refund troops
-    clear_disconnected_fronts(&board, &mut expansions, &mut players);
-
-    // 6. Apply troop decay
-    apply_troop_decay(&mut expansions);
-
-    // Worker will automatically dispatch at the end of this frame
-}
-
-/// Process GPU results: update board, player stats, and borders
-/// NOW FAST: Only iterates over changed tiles, not all 4M tiles!
-#[tracing::instrument(skip_all)]
-fn process_gpu_results(
-    changed_tiles: &[GpuTileChange],
-    player_stats: &[GpuPlayerStats],
-    board: &mut Board,
-    players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
-    tile_change_writer: &mut MessageWriter<TileChangeMessage>,
-    player_map: &PlayerEntityMap,
-) {
-    // Update player statistics from GPU reduction
+    // Update player statistics from GPU
     {
         let _span = tracing::info_span!("update_player_stats").entered();
         for (_, mut player) in players.iter_mut() {
@@ -127,27 +60,47 @@ fn process_gpu_results(
         }
     }
 
-    // Process only the tiles that changed (typically hundreds, not millions)
-    {
-        let _span = tracing::info_span!("process_changes").entered();
-        for change in changed_tiles {
-            let x = change.x as usize;
-            let y = change.y as usize;
-            let new_owner = change.new_owner as usize;
+    // --- CPU Phase: High-level game logic ---
 
-            // Get old owner from CPU board before updating
-            let old_owner = board.get(x, y).owner() as usize;
+    // 1. Check for eliminations and update troop generation
+    check_eliminations_and_update_troops(&mut players, &mut expansions, &mut commands, &text_query);
 
-            // Update the CPU board
-            board.get_mut(x, y).set_owner(new_owner as u16);
+    let pool = ComputeTaskPool::get();
 
-            // Send tile change message for rendering
-            tile_change_writer.write(TileChangeMessage { x, y, new_owner });
+    // 2. AI: Assign troops to expansion fronts
+    assign_and_log_expansions(&mut players, &mut expansions, &adjacency, pool);
 
-            // Update borders incrementally
-            update_borders_incremental(x, y, old_owner, new_owner, board, players, player_map);
-        }
-    }
+    // 3. Prepare GPU data: Convert active fronts to direct lookup table
+    let front_lookup = prepare_front_lookup(&expansions);
+
+    // 4. Write data to GPU buffers
+    worker.write_slice("front_lookup", &front_lookup);
+
+    // Reset atomic counters for this tick
+    worker.write_slice(
+        "conquest_counters",
+        &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+    );
+
+    // Reset player_stats for next tick
+    worker.write_slice(
+        "player_stats",
+        &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES],
+    );
+
+    // Reset adjacency_matrix for next tick
+    worker.write_slice(
+        "adjacency_matrix",
+        &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+    );
+
+    // 5. Clear expansion fronts for disconnected borders and refund troops
+    clear_disconnected_fronts(&mut expansions, &mut players, &adjacency);
+
+    // 6. Apply troop decay
+    apply_troop_decay(&mut expansions);
+
+    // Worker will automatically dispatch at the end of this frame
 }
 
 /// Convert ActiveExpansions to GPU-friendly direct lookup table

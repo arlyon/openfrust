@@ -171,46 +171,6 @@ fn spawn_coordinate_labels(commands: &mut Commands) {
     }
 }
 
-/// Updates the map texture when tiles change ownership
-/// This system listens for TileChangeMessage events and updates only the affected pixels
-pub fn update_map_texture(
-    mut tile_change_reader: MessageReader<TileChangeMessage>,
-    map_texture: Res<MapTexture>,
-    map_material: Res<MapMaterial>,
-    mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<BorderMaterial>>,
-    board: Res<Board>,
-) {
-    let mut has_changes = false;
-
-    // Get mutable access to the image asset
-    let Some(image) = images.get_mut(&map_texture.0) else {
-        return;
-    };
-
-    // Process each tile change event
-    if let Some(data) = &mut image.data {
-        for message in tile_change_reader.read() {
-            let tile_index = message.y * BOARD_WIDTH + message.x;
-            let byte_index = tile_index * 2; // u16 = 2 bytes
-
-            // Get the full tile data from the CPU Board
-            let tile_data: u16 = board.get(message.x, message.y).0;
-            let bytes = tile_data.to_le_bytes();
-
-            // Write the raw u16 data to the texture
-            data[byte_index] = bytes[0];
-            data[byte_index + 1] = bytes[1];
-
-            has_changes = true;
-        }
-    } else {
-        tile_change_reader.clear();
-    }
-
-    // Force material to update by touching it (triggers change detection)
-    if has_changes {
-        // Just accessing materials.get_mut triggers change detection
-        materials.get_mut(&map_material.0);
-    }
-}
+// Legacy rendering system - replaced by GPU-to-GPU copy
+// NOTE: For now, the texture is still updated manually from the CPU board
+// Future optimization: implement GPU-to-GPU copy using copy_to_texture.wgsl

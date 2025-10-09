@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use bevy::prelude::*;
 use bevy_pancam::PanCam;
 use iyes_perf_ui::prelude::PerfUiDefaultEntries;
@@ -61,7 +59,6 @@ pub fn setup(mut commands: Commands) {
             tile_count: 1,         // Each player starts with one tile
             sum_x: start_x as u64, // Initialize with starting position
             sum_y: start_y as u64, // Initialize with starting position
-            border_tiles: HashSet::new(),
             color,
         };
 
