@@ -7,7 +7,6 @@ use bevy_pancam::PanCamPlugin;
 
 mod systems;
 mod types;
-mod utils;
 
 use iyes_perf_ui::PerfUiPlugin;
 // Re-export types for convenience
@@ -49,13 +48,16 @@ fn main() {
         // Initialize Board before worker plugin (worker needs it during build)
         .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))
         // Initialize adjacency matrix (populated by GPU)
-        .insert_resource(systems::AdjacencyMatrix(vec![0u32; NUM_ENTITIES * NUM_ENTITIES]))
+        .insert_resource(systems::AdjacencyMatrix(vec![
+            0u32;
+            NUM_ENTITIES * NUM_ENTITIES
+        ]))
         .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())
         .add_systems(
             Startup,
             (
-                systems::setup, // This will now populate the existing Board
-                systems::sync_board_to_gpu, // Sync populated board to GPU
+                systems::setup,             // This will now populate the existing Board
+                systems::sync_board_to_gpu, // Sync populated board to GPU storage assets
                 systems::setup_map_texture,
             )
                 .chain(),

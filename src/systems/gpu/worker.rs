@@ -57,6 +57,16 @@ impl ComputeShader for BorderAdjacencyShader {
     }
 }
 
+/// Shader definition for copying board_out to board_render for rendering
+#[derive(TypePath)]
+struct CopyBoardShader;
+
+impl ComputeShader for CopyBoardShader {
+    fn shader() -> ShaderRef {
+        "shaders/copy_board.wgsl".into()
+    }
+}
+
 /// Compute worker for territory expansion
 #[derive(Resource)]
 pub struct ExpansionWorker;
@@ -93,6 +103,8 @@ impl ComputeWorker for ExpansionWorker {
             .add_staging("board_in", &initial_board_data)
             .add_storage("board_out", &initial_board_data)
             .add_staging("board_out", &initial_board_data)
+            // Create a read-write storage asset for rendering (synced from board_out via copy pass)
+            .add_rw_storage_asset("board_render", &initial_board_data)
             // Define the expansion compute pass with 16x16 workgroup size
             .add_pass::<ExpansionShader>(
                 [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
@@ -103,6 +115,7 @@ impl ComputeWorker for ExpansionWorker {
                     "board_in",
                     "board_out",
                 ],
+                &[],
             )
             // Automatically swap board_in and board_out after expansion
             .add_swap("board_in", "board_out")
@@ -120,6 +133,7 @@ impl ComputeWorker for ExpansionWorker {
             .add_pass::<ProcessResultsShader>(
                 [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
                 &["params", "board_out", "player_stats"],
+                &[],
             )
             // --- BORDER ADJACENCY PASS ---
             // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
@@ -135,6 +149,13 @@ impl ComputeWorker for ExpansionWorker {
             .add_pass::<BorderAdjacencyShader>(
                 [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
                 &["params", "board_out", "adjacency_matrix"],
+                &[],
+            )
+            // Copy board_out to board_render for rendering (GPU-to-GPU)
+            .add_pass::<CopyBoardShader>(
+                [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
+                &["params", "board_out"],
+                &["board_render"],
             )
             .build()
     }

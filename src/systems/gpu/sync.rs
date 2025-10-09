@@ -9,7 +9,7 @@ pub fn sync_board_to_gpu(board: Res<Board>, mut worker: ResMut<AppComputeWorker<
     // Convert board tiles to u32 for GPU
     let board_data: Vec<u32> = board.tiles.iter().map(|t| t.0 as u32).collect();
 
-    // Write to both ping-pong buffers so they start in sync
+    // Write to both ping-pong buffers and render buffer so they start in sync
     worker.write_slice("board_in", &board_data);
     worker.write_slice("board_out", &board_data);
 

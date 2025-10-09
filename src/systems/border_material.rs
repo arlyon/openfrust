@@ -6,10 +6,9 @@ use bevy::{
 /// Custom material for rendering territory borders
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct BorderMaterial {
-    /// The map texture containing raw tile data (R16Uint)
-    /// No sampler needed - we use textureLoad instead of textureSample
-    #[texture(0, sample_type = "u_int")]
-    pub map_texture: Handle<Image>,
+    /// The board data storage buffer containing raw tile data (u32 array)
+    #[storage(0, read_only)]
+    pub board_data: Handle<ShaderStorageBuffer>,
 
     /// Color multiplier for borders (e.g., vec4(0.3, 0.3, 0.3, 1.0) for darker borders)
     #[uniform(1)]

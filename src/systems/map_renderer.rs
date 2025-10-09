@@ -1,68 +1,33 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::storage::ShaderStorageBuffer;
 use bevy::sprite_render::MeshMaterial2d;
+use bevy_app_compute::prelude::*;
 
-use crate::systems::BorderMaterial;
+use crate::systems::{BorderMaterial, ExpansionWorker};
 use crate::types::*;
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
 
 const LABEL_INTERVAL: usize = 256; // Show coordinate every 256 pixels
 
-/// Resource holding the handle to our dynamic map texture
-#[derive(Resource)]
-pub struct MapTexture(pub Handle<Image>);
-
 /// Resource holding the material handle so we can update it
 #[derive(Resource)]
 pub struct MapMaterial(pub Handle<BorderMaterial>);
 
-/// Creates and initializes the map texture at startup
+/// Creates and initializes the map rendering at startup
 pub fn setup_map_texture(
     mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
+    worker: Res<AppComputeWorker<ExpansionWorker>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<BorderMaterial>>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
-    board: Res<Board>,
     player_colors: Res<PlayerColorMap>,
 ) {
-    // Create a new R16Uint data texture containing raw Tile data
-    // The GPU will assemble the final image by looking up colors from the owner ID
-    let mut image = Image::new_fill(
-        Extent3d {
-            width: BOARD_WIDTH as u32,
-            height: BOARD_HEIGHT as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &[0, 0], // Initial zero data (u16 = 2 bytes)
-        TextureFormat::R16Uint,
-        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
-    );
-
-    // Iterate through the game board and write raw tile data to the image buffer
-    if let Some(data) = &mut image.data {
-        for y in 0..BOARD_HEIGHT {
-            for x in 0..BOARD_WIDTH {
-                let tile = board.get(x, y);
-                let tile_index = y * BOARD_WIDTH + x;
-                let byte_index = tile_index * 2; // u16 = 2 bytes
-
-                // Write the raw Tile(u16) data
-                let bytes = tile.0.to_le_bytes();
-                data[byte_index] = bytes[0];
-                data[byte_index + 1] = bytes[1];
-            }
-        }
-    }
-
-    // Add the image to the asset server and get a handle to it
-    let handle = images.add(image);
-
-    // Store the handle in our resource so the update system can access it
-    commands.insert_resource(MapTexture(handle.clone()));
+    // Get the handle to the render buffer
+    let board_handle = worker
+        .get_storage_buffer_asset_handle("board_render")
+        .expect("board_render storage buffer asset should exist")
+        .clone();
 
     // Create a storage buffer containing player colors
     // Convert LinearRgba colors to Vec4 for the shader
@@ -86,9 +51,9 @@ pub fn setup_map_texture(
         BOARD_HEIGHT as f32 * TILE_SIZE,
     ));
 
-    // Create the border material with the map texture
+    // Create the border material with the storage buffer handle
     let material_handle = materials.add(BorderMaterial {
-        map_texture: handle,
+        board_data: board_handle,
         border_color: LinearRgba::new(0.3, 0.3, 0.3, 1.0), // Darker borders
         border_thickness: 1.0,
         texture_size: Vec2::new(BOARD_WIDTH as f32, BOARD_HEIGHT as f32),
