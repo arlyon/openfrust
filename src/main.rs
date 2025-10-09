@@ -2,6 +2,7 @@ use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 use bevy::sprite_render::Material2dPlugin;
 use bevy::window::WindowResolution;
+use bevy_app_compute::prelude::*;
 use bevy_pancam::PanCamPlugin;
 
 mod systems;
@@ -27,7 +28,7 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "OpenFrust - Bevy Edition".to_string(),
+                        title: "OpenFrust - Bevy Edition (GPU)".to_string(),
                         resolution: WindowResolution::new(800, 800),
                         canvas: Some("#bevy-canvas".to_string()),
                         fit_canvas_to_parent: true,
@@ -40,20 +41,26 @@ fn main() {
             PanCamPlugin,
             PerfUiPlugin,
             Material2dPlugin::<systems::BorderMaterial>::default(),
+            // GPU compute plugins
+            AppComputePlugin,
         ))
         .add_message::<TileChangeMessage>()
         .insert_resource(Time::<Fixed>::from_hz(10.0))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
+        // Initialize Board before worker plugin (worker needs it during build)
+        .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))
+        .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())
         .add_systems(
             Startup,
             (
-                systems::setup,
+                systems::setup, // This will now populate the existing Board
+                systems::sync_board_to_gpu, // Sync populated board to GPU
                 systems::initial_border_calculation,
                 systems::setup_map_texture,
             )
                 .chain(),
         )
-        .add_systems(FixedUpdate, systems::update_game)
+        .add_systems(FixedUpdate, systems::gpu_orchestrator)
         .add_systems(
             Update,
             (systems::update_map_texture, systems::update_player_info),

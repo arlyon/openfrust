@@ -63,9 +63,11 @@ impl ComputeWorker for ExpansionWorker {
             // Storage buffer for atomic counters (one per front)
             .add_storage("conquer_counters", &vec![0u32; NUM_PAIRS])
 
-            // Ping-pong buffers for board state
+            // Ping-pong buffers for board state with staging for swap support
             .add_storage("board_in", &initial_board_data)
+            .add_staging("board_in", &initial_board_data)
             .add_storage("board_out", &initial_board_data)
+            .add_staging("board_out", &initial_board_data)
 
             // Define the compute pass with 16x16 workgroup size
             .add_pass::<ExpansionShader>(
