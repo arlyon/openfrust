@@ -1,14 +1,15 @@
 use bevy::prelude::*;
 use bevy::tasks::ComputeTaskPool;
 use bevy_app_compute::prelude::*;
+use bytemuck::Zeroable;
 
 use super::border_calculation::update_borders_incremental;
 use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
-use super::gpu::{ExpansionWorker, Front};
+use super::gpu::{ExpansionWorker, GpuPlayerStats, GpuTileChange};
 use super::player_elimination::check_eliminations_and_update_troops;
 use crate::types::*;
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE};
+use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
 
 /// GPU-accelerated game update system - orchestrates CPU and GPU work
 #[tracing::instrument(skip_all)]
@@ -24,14 +25,34 @@ pub fn gpu_orchestrator(
 ) {
     // Synchronization point: wait for GPU to finish previous tick
     if !worker.ready() {
-        return; // GPU still working, skip this tick to maintain determinism
+        bevy::log::debug!("GPU still working, skipping this tick to maintain determinism");
+        return;
     }
 
-    // --- GPU has completed previous tick, read results and update CPU state ---
-    // After swap, board_in contains the previous frame's output
-    let board_data = worker.read_vec::<u32>("board_in");
+    // --- GPU has completed previous tick, read TINY results (not 16MB!) ---
+    let (changed_tiles, player_stats) = {
+        let _span = tracing::info_span!("load_gpu_results").entered();
+
+        // Read the count of changed tiles
+        let change_count_vec = worker.read_vec::<u32>("changed_tiles_count");
+        let change_count = change_count_vec[0] as usize;
+
+        bevy::log::info!("GPU detected {} tile changes", change_count);
+
+        // Read ONLY the changed tiles (not the entire 16MB board!)
+        let all_changes = worker.read_vec::<GpuTileChange>("changed_tiles");
+        let changed_tiles = all_changes[..change_count.min(65536)].to_vec();
+
+        // Read player statistics calculated on GPU
+        let player_stats = worker.read_vec::<GpuPlayerStats>("player_stats");
+
+        (changed_tiles, player_stats)
+    };
+
+    // Process the small list of changes
     process_gpu_results(
-        &board_data,
+        &changed_tiles,
+        &player_stats,
         &mut board,
         &mut players,
         &mut tile_change_writer,
@@ -48,14 +69,26 @@ pub fn gpu_orchestrator(
     // 2. AI: Assign troops to expansion fronts
     assign_and_log_expansions(&board, &mut players, &mut expansions, pool);
 
-    // 3. Prepare GPU data: Convert active fronts to GPU format
-    let gpu_fronts = prepare_gpu_fronts(&expansions);
+    // 3. Prepare GPU data: Convert active fronts to direct lookup table
+    let front_lookup = prepare_front_lookup(&expansions);
 
     // 4. Write data to GPU buffers
-    worker.write_slice("fronts", &gpu_fronts);
+    worker.write_slice("front_lookup", &front_lookup);
 
     // Reset atomic counters for this tick
-    worker.write_slice("conquer_counters", &vec![0u32; crate::NUM_PAIRS]);
+    worker.write_slice(
+        "conquest_counters",
+        &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+    );
+
+    // Reset changed_tiles_count for next tick
+    worker.write_slice("changed_tiles_count", &[0u32]);
+
+    // Reset player_stats for next tick
+    worker.write_slice(
+        "player_stats",
+        &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES],
+    );
 
     // 5. Clear expansion fronts for disconnected borders and refund troops
     clear_disconnected_fronts(&board, &mut expansions, &mut players);
@@ -67,69 +100,67 @@ pub fn gpu_orchestrator(
 }
 
 /// Process GPU results: update board, player stats, and borders
+/// NOW FAST: Only iterates over changed tiles, not all 4M tiles!
+#[tracing::instrument(skip_all)]
 fn process_gpu_results(
-    board_out_data: &[u32],
+    changed_tiles: &[GpuTileChange],
+    player_stats: &[GpuPlayerStats],
     board: &mut Board,
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
     tile_change_writer: &mut MessageWriter<TileChangeMessage>,
     player_map: &PlayerEntityMap,
 ) {
-    let _span = tracing::info_span!("process_gpu_results").entered();
+    // Update player statistics from GPU reduction
+    {
+        let _span = tracing::info_span!("update_player_stats").entered();
+        for (_, mut player) in players.iter_mut() {
+            let stats = &player_stats[player.id];
+            player.tile_count = stats.tile_count as usize;
 
-    // Compare board_out with current board to find changes
-    for y in 0..BOARD_HEIGHT {
-        for x in 0..BOARD_WIDTH {
-            let index = y * BOARD_WIDTH + x;
-            let new_tile_data = board_out_data[index] as u16;
-            let old_tile = board.get(x, y);
+            let x_low = stats.sum_x_low as u64;
+            let x_high = stats.sum_x_high as u64;
+            player.sum_x = (x_high << 32) | x_low;
 
-            // Check if ownership changed
-            let new_owner = (new_tile_data & 0x0FFF) as usize;
-            let old_owner = old_tile.owner() as usize;
+            let y_low = stats.sum_y_low as u64;
+            let y_high = stats.sum_y_high as u64;
+            player.sum_y = (y_high << 32) | y_low;
+        }
+    }
 
-            if new_owner != old_owner {
-                // Update the board
-                board.get_mut(x, y).0 = new_tile_data;
+    // Process only the tiles that changed (typically hundreds, not millions)
+    {
+        let _span = tracing::info_span!("process_changes").entered();
+        for change in changed_tiles {
+            let x = change.x as usize;
+            let y = change.y as usize;
+            let new_owner = change.new_owner as usize;
 
-                // Send tile change message for rendering
-                tile_change_writer.write(TileChangeMessage { x, y, new_owner });
+            // Get old owner from CPU board before updating
+            let old_owner = board.get(x, y).owner() as usize;
 
-                // Update player statistics incrementally
-                if let Some(new_owner_entity) = player_map.0[new_owner]
-                    && let Ok((_, mut player)) = players.get_mut(new_owner_entity)
-                {
-                    player.tile_count += 1;
-                    player.sum_x += x as u64;
-                    player.sum_y += y as u64;
-                }
+            // Update the CPU board
+            board.get_mut(x, y).set_owner(new_owner as u16);
 
-                if old_owner != NO_OWNER
-                    && let Some(old_owner_entity) = player_map.0[old_owner]
-                    && let Ok((_, mut player)) = players.get_mut(old_owner_entity)
-                {
-                    player.tile_count -= 1;
-                    player.sum_x -= x as u64;
-                    player.sum_y -= y as u64;
-                }
+            // Send tile change message for rendering
+            tile_change_writer.write(TileChangeMessage { x, y, new_owner });
 
-                // Update borders incrementally
-                update_borders_incremental(x, y, old_owner, new_owner, board, players, player_map);
-            }
+            // Update borders incrementally
+            update_borders_incremental(x, y, old_owner, new_owner, board, players, player_map);
         }
     }
 }
 
-/// Convert ActiveExpansions to GPU Front format
-fn prepare_gpu_fronts(expansions: &ActiveExpansions) -> Vec<Front> {
-    let _span = tracing::info_span!("prepare_gpu_fronts").entered();
-
-    let mut fronts = Vec::new();
+/// Convert ActiveExpansions to GPU-friendly direct lookup table
+/// Index = attacker * NUM_ENTITIES + defender, Value = tiles_to_conquer
+#[tracing::instrument(skip_all)]
+fn prepare_front_lookup(expansions: &ActiveExpansions) -> Vec<u32> {
+    // Create flattened 2D array: [attacker][defender] -> tiles_to_conquer
+    let mut lookup = vec![0u32; NUM_ENTITIES * NUM_ENTITIES];
 
     // Iterate through all possible player pairs
-    for a in 0..crate::NUM_ENTITIES {
-        for b in (a + 1)..crate::NUM_ENTITIES {
+    for a in 0..NUM_ENTITIES {
+        for b in (a + 1)..NUM_ENTITIES {
             let net_troops = expansions.get_net_troops(a, b);
-
             if net_troops == 0 {
                 continue;
             }
@@ -141,32 +172,19 @@ fn prepare_gpu_fronts(expansions: &ActiveExpansions) -> Vec<Front> {
             // Calculate how many tiles to conquer this tick
             let tiles_to_move = (velocity as f32 * EXPANSION_RATE_BASE / 100.0).max(0.1) as u32;
 
-            fronts.push(Front {
-                attacker_id: attacker as u32,
-                defender_id: defender as u32,
-                tiles_to_conquer: tiles_to_move,
-                _padding: 0,
-            });
+            if tiles_to_move > 0 {
+                // Direct lookup: O(1) access on GPU
+                lookup[attacker * NUM_ENTITIES + defender] = tiles_to_move;
+            }
         }
     }
 
-    // Pad to NUM_PAIRS to match buffer size
-    while fronts.len() < crate::NUM_PAIRS {
-        fronts.push(Front {
-            attacker_id: 0,
-            defender_id: 0,
-            tiles_to_conquer: 0,
-            _padding: 0,
-        });
-    }
-
-    fronts
+    lookup
 }
 
 /// Apply troop decay to all active fronts
+#[tracing::instrument(skip_all)]
 fn apply_troop_decay(expansions: &mut ActiveExpansions) {
-    let _span = tracing::info_span!("troop_decay").entered();
-
     for troops in expansions.fronts.iter_mut() {
         if *troops != 0 {
             let abs_troops = troops.abs();

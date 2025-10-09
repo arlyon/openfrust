@@ -16,7 +16,7 @@ pub fn setup(mut commands: Commands) {
         Camera2d,
         PanCam {
             min_scale: 1.0 / 16.0,
-            max_scale: 1.0,
+            max_scale: 2.0,
             speed: 2.0,
             max_x: (BOARD_WIDTH as f32) / 2.0 + 100.0,
             max_y: (BOARD_HEIGHT as f32) / 2.0 + 100.0,

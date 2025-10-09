@@ -13,8 +13,7 @@ mod setup;
 
 pub use border_calculation::initial_border_calculation;
 pub use border_material::BorderMaterial;
-pub use game_update::update_game;
-pub use gpu::{sync_board_to_gpu, ExpansionWorker};
+pub use gpu::{ExpansionWorker, sync_board_to_gpu};
 pub use gpu_orchestrator::gpu_orchestrator;
 pub use map_renderer::{setup_map_texture, update_map_texture};
 pub use player_info::update_player_info;

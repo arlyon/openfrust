@@ -4,19 +4,12 @@ struct SimParams {
     board_width: u32,
     board_height: u32,
     expansion_rate: f32,
-    _padding: u32,
-}
-
-struct Front {
-    attacker_id: u32,
-    defender_id: u32,
-    tiles_to_conquer: u32,
-    _padding: u32,
+    num_entities: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: SimParams;
-@group(0) @binding(1) var<storage, read> fronts: array<Front>;
-@group(0) @binding(2) var<storage, read_write> conquer_counters: array<atomic<u32>>;
+@group(0) @binding(1) var<storage, read> front_lookup: array<u32>;
+@group(0) @binding(2) var<storage, read_write> conquest_counters: array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read> board_in: array<u32>;
 @group(0) @binding(4) var<storage, read_write> board_out: array<u32>;
 
@@ -50,15 +43,9 @@ fn get_index(x: u32, y: u32) -> u32 {
     return y * params.board_width + x;
 }
 
-// Find the front index for a given attacker-defender pair
-// Returns NUM_PAIRS if not found (invalid index)
-fn find_front_index(attacker: u32, defender: u32) -> u32 {
-    for (var i = 0u; i < arrayLength(&fronts); i++) {
-        if fronts[i].attacker_id == attacker && fronts[i].defender_id == defender {
-            return i;
-        }
-    }
-    return 999999u; // Invalid index
+// Get lookup index for attacker-defender pair (O(1) instead of O(N) search)
+fn get_lookup_index(attacker: u32, defender: u32) -> u32 {
+    return attacker * params.num_entities + defender;
 }
 
 @compute @workgroup_size(16, 16, 1)
@@ -100,15 +87,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let neighbor_owner = get_owner(board_in[neighbor_index]);
 
             if neighbor_owner != current_owner {
-                // Check if there's an active front for this pair
-                let front_idx = find_front_index(neighbor_owner, current_owner);
+                // O(1) lookup: attacker = neighbor_owner, defender = current_owner
+                let lookup_idx = get_lookup_index(neighbor_owner, current_owner);
+                let tiles_to_conquer = front_lookup[lookup_idx];
 
-                if front_idx < arrayLength(&fronts) && fronts[front_idx].tiles_to_conquer > 0u {
+                if tiles_to_conquer > 0u {
                     // This neighbor is actively attacking - try to claim a conquest slot
-                    let old_counter = atomicAdd(&conquer_counters[front_idx], 1u);
+                    let old_counter = atomicAdd(&conquest_counters[lookup_idx], 1u);
 
                     // If we successfully claimed a slot within the allocation
-                    if old_counter < fronts[front_idx].tiles_to_conquer {
+                    if old_counter < tiles_to_conquer {
                         // Conquer this tile
                         new_tile_data = set_owner(tile_data, neighbor_owner);
                         break; // Only one attacker can conquer per tick
