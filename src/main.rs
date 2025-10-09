@@ -13,7 +13,7 @@ use iyes_perf_ui::PerfUiPlugin;
 pub use types::*;
 
 // --- GAME CONSTANTS ---
-pub const BOARD_WIDTH: usize = 4096;
+pub const BOARD_WIDTH: usize = 2048;
 pub const BOARD_HEIGHT: usize = 2048;
 pub const NUM_PLAYERS: usize = 100;
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick

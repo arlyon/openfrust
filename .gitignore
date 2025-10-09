@@ -1,2 +1,6 @@
 /target
 dist
+.vercel
+.vercelignore
+trace*
+vercel.json

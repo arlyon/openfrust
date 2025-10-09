@@ -437,6 +437,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_app_compute"
+version = "0.17.0"
+source = "git+https://github.com/jwright159/bevy_app_compute?branch=bevy-0.17#1ef95da693223dcf1b8ea86e98c5c653980f7d03"
+dependencies = [
+ "bevy",
+ "bytemuck",
+ "futures-lite",
+ "naga",
+ "naga_oil",
+ "parking_lot",
+ "thiserror 2.0.17",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
 name = "bevy_asset"
 version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3510,6 +3526,7 @@ name = "openfrust"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy_app_compute",
  "bevy_pancam",
  "bitfield",
  "bytemuck",
@@ -4932,6 +4949,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga",
+ "parking_lot",
  "portable-atomic",
  "profiling",
  "raw-window-handle",
@@ -4970,6 +4988,7 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.17",
  "wgpu-core-deps-apple",
+ "wgpu-core-deps-emscripten",
  "wgpu-core-deps-wasm",
  "wgpu-core-deps-windows-linux-android",
  "wgpu-hal",
@@ -4981,6 +5000,15 @@ name = "wgpu-core-deps-apple"
 version = "26.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18ae5fbde6a4cbebae38358aa73fcd6e0f15c6144b67ef5dc91ded0db125dbdf"
+dependencies = [
+ "wgpu-hal",
+]
+
+[[package]]
+name = "wgpu-core-deps-emscripten"
+version = "26.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7670e390f416006f746b4600fdd9136455e3627f5bd763abf9a65daa216dd2d"
 dependencies = [
  "wgpu-hal",
 ]
