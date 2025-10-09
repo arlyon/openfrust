@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use bevy::tasks::ComputeTaskPool;
 use bevy_app_compute::prelude::*;
 use bytemuck::Zeroable;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
@@ -14,6 +16,47 @@ use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
 #[derive(Resource)]
 pub struct AdjacencyMatrix(pub Vec<u32>);
 
+/// Resource tracking GPU execution time in milliseconds
+#[derive(Resource)]
+pub struct GpuOrchestratorTime {
+    time_ms: AtomicU64,
+    dispatch_time: Option<Instant>,
+}
+
+impl GpuOrchestratorTime {
+    pub fn new() -> Self {
+        Self {
+            time_ms: AtomicU64::new(0),
+            dispatch_time: None,
+        }
+    }
+
+    pub fn set(&self, ms: u64) {
+        self.time_ms.store(ms, Ordering::Relaxed);
+    }
+
+    pub fn get(&self) -> f64 {
+        self.time_ms.load(Ordering::Relaxed) as f64
+    }
+
+    pub fn mark_dispatch(&mut self) {
+        self.dispatch_time = Some(Instant::now());
+    }
+
+    pub fn mark_ready(&mut self) {
+        if let Some(start) = self.dispatch_time.take() {
+            let elapsed_us = start.elapsed().as_micros() as u64;
+            self.set((elapsed_us + 500) / 1000); // Round to nearest ms
+        }
+    }
+}
+
+impl Default for GpuOrchestratorTime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// GPU-accelerated game update system - orchestrates CPU and GPU work
 #[tracing::instrument(skip_all)]
 pub fn gpu_orchestrator(
@@ -23,12 +66,16 @@ pub fn gpu_orchestrator(
     text_query: Query<(Entity, &PlayerInfoText)>,
     mut adjacency: ResMut<AdjacencyMatrix>,
     mut worker: ResMut<AppComputeWorker<ExpansionWorker>>,
+    mut timing: ResMut<GpuOrchestratorTime>,
 ) {
     // Synchronization point: wait for GPU to finish previous tick
     if !worker.ready() {
         bevy::log::debug!("GPU still working, skipping this tick to maintain determinism");
         return;
     }
+
+    // GPU work from previous tick is complete - record timing
+    timing.mark_ready();
 
     // --- GPU has completed previous tick, read TINY results ---
     let player_stats = {
@@ -101,6 +148,8 @@ pub fn gpu_orchestrator(
     apply_troop_decay(&mut expansions);
 
     // Worker will automatically dispatch at the end of this frame
+    // Mark dispatch time to measure GPU execution
+    timing.mark_dispatch();
 }
 
 /// Convert ActiveExpansions to GPU-friendly direct lookup table

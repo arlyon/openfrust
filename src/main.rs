@@ -8,13 +8,13 @@ use bevy_pancam::PanCamPlugin;
 mod systems;
 mod types;
 
-use iyes_perf_ui::PerfUiPlugin;
+use iyes_perf_ui::{PerfUiAppExt, PerfUiPlugin};
 // Re-export types for convenience
 pub use types::*;
 
 // --- GAME CONSTANTS ---
-pub const BOARD_WIDTH: usize = 2048;
-pub const BOARD_HEIGHT: usize = 2048;
+pub const BOARD_WIDTH: usize = 8192;
+pub const BOARD_HEIGHT: usize = 4096;
 pub const NUM_PLAYERS: usize = 100;
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
@@ -43,7 +43,8 @@ fn main() {
             // GPU compute plugins
             AppComputePlugin,
         ))
-        .insert_resource(Time::<Fixed>::from_hz(10.0))
+        .add_perf_ui_simple_entry::<systems::PerfUiEntryGpuTime>()
+        .insert_resource(Time::<Fixed>::from_hz(5.0))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         // Initialize Board before worker plugin (worker needs it during build)
         .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))
@@ -52,6 +53,8 @@ fn main() {
             0u32;
             NUM_ENTITIES * NUM_ENTITIES
         ]))
+        // Initialize GPU timing resource
+        .insert_resource(systems::GpuOrchestratorTime::default())
         .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())
         .add_systems(
             Startup,
@@ -59,6 +62,7 @@ fn main() {
                 systems::setup,             // This will now populate the existing Board
                 systems::sync_board_to_gpu, // Sync populated board to GPU storage assets
                 systems::setup_map_texture,
+                systems::setup_gpu_perf_ui, // Setup GPU timing display
             )
                 .chain(),
         )
