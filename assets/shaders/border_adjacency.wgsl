@@ -38,15 +38,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = get_index(pos.x, pos.y);
     let owner = get_owner(board[index]);
 
-    // Check 4 neighbors (no need for diagonals)
-    let offsets = array<vec2<i32>, 4>(
-        vec2<i32>(0, -1),  // North
-        vec2<i32>(0, 1),   // South
-        vec2<i32>(-1, 0),  // West
-        vec2<i32>(1, 0)    // East
+    // Check 2 neighbors (right and down) to process each border only once
+    let offsets = array<vec2<i32>, 2>(
+        vec2<i32>(1, 0),   // East
+        vec2<i32>(0, 1)    // South
     );
 
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 2; i++) {
         let npos = vec2<i32>(pos) + offsets[i];
         if (in_bounds(npos.x, npos.y)) {
             let n_index = get_index(u32(npos.x), u32(npos.y));
