@@ -3,8 +3,8 @@ use bevy::tasks::{ComputeTaskPool, ParallelSlice};
 use std::sync::Mutex;
 
 use super::gpu_orchestrator::AdjacencyMatrix;
-use crate::types::*;
-use crate::{NUM_ENTITIES, NO_OWNER};
+use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerId};
+use crate::{NO_OWNER, NUM_ENTITIES};
 
 /// AI assigns troops to expansion fronts and logs active fronts
 #[tracing::instrument(skip_all)]
@@ -47,6 +47,8 @@ pub fn assign_and_log_expansions(
             bevy::log::debug!("Active expansion fronts:");
             for a in 0..crate::NUM_ENTITIES {
                 for b in (a + 1)..crate::NUM_ENTITIES {
+                    let a = PlayerId::new_unchecked(a);
+                    let b = PlayerId::new_unchecked(b);
                     let net_troops = expansions.get_net_troops(a, b);
                     if net_troops != 0 {
                         let (attacker, defender, troops) = if net_troops > 0 {
@@ -57,12 +59,12 @@ pub fn assign_and_log_expansions(
                         let defender_name = if defender == NO_OWNER {
                             "Empty".to_string()
                         } else {
-                            format!("Player {}", defender)
+                            format!("Player {defender}")
                         };
                         let attacker_name = if attacker == NO_OWNER {
                             "Empty".to_string()
                         } else {
-                            format!("Player {}", attacker)
+                            format!("Player {attacker}")
                         };
                         bevy::log::debug!(
                             "  {} -> {}: {} troops",
@@ -90,9 +92,12 @@ fn calculate_player_assignments(
     // Find all neighbors from adjacency matrix
     let mut neighbors = Vec::new();
     for neighbor_id in 0..NUM_ENTITIES {
+        let neighbor_id = PlayerId::new_unchecked(neighbor_id);
         if neighbor_id != player.id
-            && adjacency.0[player.id * NUM_ENTITIES + neighbor_id] == 1
-            && neighbor_id == NO_OWNER  // Only expand into wilderness
+            && adjacency.0[(u16::from(player.id) * NUM_ENTITIES + u16::from(neighbor_id)) as usize]
+                == 1
+        // Only expand into wilderness
+            && neighbor_id == NO_OWNER
         {
             neighbors.push(neighbor_id);
         }

@@ -5,14 +5,10 @@ use bevy::sprite_render::MeshMaterial2d;
 use bevy_app_compute::prelude::*;
 
 use crate::systems::{BorderMaterial, ExpansionWorker};
-use crate::types::*;
+use crate::types::PlayerColorMap;
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
 
 const LABEL_INTERVAL: usize = 256; // Show coordinate every 256 pixels
-
-/// Resource holding the material handle so we can update it
-#[derive(Resource)]
-pub struct MapMaterial(pub Handle<BorderMaterial>);
 
 /// Creates and initializes the map rendering at startup
 pub fn setup_map_texture(
@@ -60,9 +56,6 @@ pub fn setup_map_texture(
         player_colors: colors_buffer,
     });
 
-    // Store material handle for updates
-    commands.insert_resource(MapMaterial(material_handle.clone()));
-
     // Spawn the map using our custom material
     commands.spawn((Mesh2d(mesh), MeshMaterial2d(material_handle)));
 
@@ -82,7 +75,7 @@ fn spawn_coordinate_labels(commands: &mut Commands) {
 
         // Top border
         commands.spawn((
-            Text2d::new(format!("{}", x)),
+            Text2d::new(format!("{x}")),
             TextFont {
                 font_size: 20.0,
                 ..default()
@@ -93,7 +86,7 @@ fn spawn_coordinate_labels(commands: &mut Commands) {
 
         // Bottom border
         commands.spawn((
-            Text2d::new(format!("{}", x)),
+            Text2d::new(format!("{x}")),
             TextFont {
                 font_size: 20.0,
                 ..default()
@@ -112,7 +105,7 @@ fn spawn_coordinate_labels(commands: &mut Commands) {
 
         // Left border
         commands.spawn((
-            Text2d::new(format!("{}", y)),
+            Text2d::new(format!("{y}")),
             TextFont {
                 font_size: 20.0,
                 ..default()
@@ -123,7 +116,7 @@ fn spawn_coordinate_labels(commands: &mut Commands) {
 
         // Right border
         commands.spawn((
-            Text2d::new(format!("{}", y)),
+            Text2d::new(format!("{y}")),
             TextFont {
                 font_size: 20.0,
                 ..default()

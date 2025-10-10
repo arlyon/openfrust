@@ -1,3 +1,7 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::needless_pass_by_value)]
+
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 use bevy::sprite_render::Material2dPlugin;
@@ -15,11 +19,11 @@ pub use types::*;
 // --- GAME CONSTANTS ---
 pub const BOARD_WIDTH: usize = 4096;
 pub const BOARD_HEIGHT: usize = 2048;
-pub const NUM_PLAYERS: usize = 100;
+pub const NUM_PLAYERS: u16 = 100; // limit is u11 - 1 ie 2047
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
-pub const NUM_ENTITIES: usize = NUM_PLAYERS + 1;
-pub const NUM_PAIRS: usize = (NUM_ENTITIES * (NUM_ENTITIES - 1)) / 2;
+pub const NUM_ENTITIES: u16 = NUM_PLAYERS + 1;
+pub const NUM_PAIRS: u16 = (NUM_ENTITIES * (NUM_ENTITIES - 1)) / 2;
 
 fn main() {
     App::new()
@@ -50,8 +54,9 @@ fn main() {
         .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))
         // Initialize adjacency matrix (populated by GPU)
         .insert_resource(systems::AdjacencyMatrix(vec![
-            0u32;
-            NUM_ENTITIES * NUM_ENTITIES
+            0;
+            (NUM_ENTITIES * NUM_ENTITIES)
+                as usize
         ]))
         // Initialize GPU timing resource
         .insert_resource(systems::GpuOrchestratorTime::default())

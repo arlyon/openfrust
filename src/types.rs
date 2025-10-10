@@ -5,8 +5,42 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::{NUM_ENTITIES, NUM_PAIRS};
 
-pub type PlayerId = usize;
-pub const NO_OWNER: PlayerId = 0;
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PlayerId(u16);
+
+impl PlayerId {
+    /// # Panics
+    ///
+    /// Panics if `id` is greater than `NUM_ENTITIES`
+    pub const fn new(id: u16) -> Self {
+        assert!(id < NUM_ENTITIES, "PlayerId out of range");
+        Self(id)
+    }
+
+    pub const fn new_unchecked(id: u16) -> Self {
+        Self(id)
+    }
+}
+
+impl From<PlayerId> for usize {
+    fn from(id: PlayerId) -> Self {
+        id.0 as usize
+    }
+}
+
+impl From<PlayerId> for u16 {
+    fn from(id: PlayerId) -> Self {
+        id.0
+    }
+}
+
+impl std::fmt::Display for PlayerId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+pub const NO_OWNER: PlayerId = PlayerId(0);
 
 pub type LivingPlayerUpdate = (With<Alive>, Changed<PlayerData>);
 
@@ -15,7 +49,7 @@ bitfield! {
     #[derive(Clone, Copy)]
     pub struct Tile(u16);
     impl Debug;
-    pub u16, owner, set_owner: 11, 0;           // 12 bits for owner ID (up to 4096 players)
+    u16, _owner, _set_owner: 11, 0;           // 12 bits for owner ID (up to 4096 players)
     pub u8, terrain_diff, set_terrain_diff: 14, 12; // 3 bits for terrain type (8 types)
     pub has_fallout, set_fallout: 15;           // 1 bit for fallout flag
 }
@@ -23,7 +57,7 @@ bitfield! {
 impl Tile {
     pub fn new(owner: PlayerId, terrain_difficulty: f32) -> Self {
         let mut tile = Tile(0);
-        tile.set_owner(owner as u16);
+        tile._set_owner(owner.0);
         // Map terrain difficulty to 0-7 range
         let terrain_type = ((terrain_difficulty.clamp(0.5, 2.0) - 0.5) / 1.5 * 7.0) as u8;
         tile.set_terrain_diff(terrain_type);
@@ -33,7 +67,15 @@ impl Tile {
 
     pub fn terrain_difficulty(&self) -> f32 {
         // Map 0-7 range back to terrain difficulty
-        0.5 + (self.terrain_diff() as f32 / 7.0) * 1.5
+        0.5 + (f32::from(self.terrain_diff()) / 7.0) * 1.5
+    }
+
+    pub fn owner(&self) -> PlayerId {
+        PlayerId(self._owner())
+    }
+
+    pub fn set_owner(&mut self, owner: PlayerId) {
+        self._set_owner(owner.0);
     }
 }
 
@@ -121,7 +163,7 @@ impl PartialOrd for ConquerTask {
 /// Positive values mean X is pushing into Y, negative means Y is pushing into X
 #[derive(Resource)]
 pub struct ActiveExpansions {
-    pub fronts: [i32; NUM_PAIRS],
+    pub fronts: [i32; NUM_PAIRS as usize],
     /// Priority queues for each border expansion
     pub conquer_queues: HashMap<(PlayerId, PlayerId), BinaryHeap<ConquerTask>>,
 }
@@ -129,7 +171,7 @@ pub struct ActiveExpansions {
 impl Default for ActiveExpansions {
     fn default() -> Self {
         Self {
-            fronts: [0; NUM_PAIRS],
+            fronts: [0; NUM_PAIRS as usize],
             conquer_queues: HashMap::new(),
         }
     }
@@ -139,8 +181,8 @@ impl ActiveExpansions {
     /// Calculate array index for a pair of players
     /// Formula: N*x - (x*(x+1))/2 + y - x - 1 where X < Y
     pub fn pair_index(a: PlayerId, b: PlayerId) -> usize {
-        let (x, y) = if a < b { (a, b) } else { (b, a) };
-        NUM_ENTITIES * x - (x * (x + 1)) / 2 + y - x - 1
+        let (x, y) = if a < b { (a.0, b.0) } else { (b.0, a.0) };
+        (NUM_ENTITIES * x - (x * (x + 1)) / 2 + y - x - 1) as usize
     }
 
     /// Add troops to a border, canceling out opposing forces
@@ -165,6 +207,7 @@ impl ActiveExpansions {
     /// Remove all borders involving a specific player
     pub fn remove_player(&mut self, player_id: PlayerId) {
         for other_id in 0..NUM_ENTITIES {
+            let other_id = PlayerId(other_id);
             if other_id != player_id {
                 self.clear_border(player_id, other_id);
             }
@@ -172,10 +215,10 @@ impl ActiveExpansions {
     }
 }
 
-/// Resource to map PlayerId to Color for fast lookups
+/// Resource to map [`PlayerId`] to [`Color`] for fast lookups
 #[derive(Resource)]
 pub struct PlayerColorMap(pub Vec<Color>);
 
-/// Resource to map PlayerId to Entity for O(1) lookups
+/// Resource to map [`PlayerId`] to [`Entity`] for O(1) lookups
 #[derive(Resource)]
 pub struct PlayerEntityMap(pub Vec<Option<Entity>>);

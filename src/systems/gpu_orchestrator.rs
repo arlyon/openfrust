@@ -9,7 +9,7 @@ use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
 use super::gpu::{ExpansionWorker, GpuPlayerStats};
 use super::player_elimination::check_eliminations_and_update_troops;
-use crate::types::*;
+use crate::types::{PlayerData, Alive, ActiveExpansions, PlayerInfoText, PlayerId};
 use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
 
 /// Resource holding the adjacency matrix from the GPU
@@ -93,16 +93,16 @@ pub fn gpu_orchestrator(
     // Update player statistics from GPU
     {
         let _span = tracing::info_span!("update_player_stats").entered();
-        for (_, mut player) in players.iter_mut() {
-            let stats = &player_stats[player.id];
+        for (_, mut player) in &mut players {
+            let stats = &player_stats[usize::from(player.id)];
             player.tile_count = stats.tile_count as usize;
 
-            let x_low = stats.sum_x_low as u64;
-            let x_high = stats.sum_x_high as u64;
+            let x_low = u64::from(stats.sum_x_low);
+            let x_high = u64::from(stats.sum_x_high);
             player.sum_x = (x_high << 32) | x_low;
 
-            let y_low = stats.sum_y_low as u64;
-            let y_high = stats.sum_y_high as u64;
+            let y_low = u64::from(stats.sum_y_low);
+            let y_high = u64::from(stats.sum_y_high);
             player.sum_y = (y_high << 32) | y_low;
         }
     }
@@ -126,19 +126,19 @@ pub fn gpu_orchestrator(
     // Reset atomic counters for this tick
     worker.write_slice(
         "conquest_counters",
-        &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+        &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
     );
 
     // Reset player_stats for next tick
     worker.write_slice(
         "player_stats",
-        &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES],
+        &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
     );
 
     // Reset adjacency_matrix for next tick
     worker.write_slice(
         "adjacency_matrix",
-        &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+        &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
     );
 
     // 5. Clear expansion fronts for disconnected borders and refund troops
@@ -152,17 +152,18 @@ pub fn gpu_orchestrator(
     timing.mark_dispatch();
 }
 
-/// Convert ActiveExpansions to GPU-friendly direct lookup table
-/// Index = attacker * NUM_ENTITIES + defender, Value = tiles_to_conquer
+/// Convert `ActiveExpansions` to GPU-friendly direct lookup table
+/// Index = attacker * `NUM_ENTITIES` + defender, Value = `tiles_to_conquer`
 #[tracing::instrument(skip_all)]
 fn prepare_front_lookup(expansions: &ActiveExpansions) -> Vec<u32> {
     // Create flattened 2D array: [attacker][defender] -> tiles_to_conquer
-    let mut lookup = vec![0u32; NUM_ENTITIES * NUM_ENTITIES];
+    let mut lookup = vec![0; (NUM_ENTITIES * NUM_ENTITIES) as usize];
 
     // Iterate through all possible player pairs
     for a in 0..NUM_ENTITIES {
         for b in (a + 1)..NUM_ENTITIES {
-            let net_troops = expansions.get_net_troops(a, b);
+            let net_troops =
+                expansions.get_net_troops(PlayerId::new_unchecked(a), PlayerId::new_unchecked(b));
             if net_troops == 0 {
                 continue;
             }
@@ -176,7 +177,7 @@ fn prepare_front_lookup(expansions: &ActiveExpansions) -> Vec<u32> {
 
             if tiles_to_move > 0 {
                 // Direct lookup: O(1) access on GPU
-                lookup[attacker * NUM_ENTITIES + defender] = tiles_to_move;
+                lookup[(attacker * NUM_ENTITIES + defender) as usize] = tiles_to_move;
             }
         }
     }
@@ -187,7 +188,7 @@ fn prepare_front_lookup(expansions: &ActiveExpansions) -> Vec<u32> {
 /// Apply troop decay to all active fronts
 #[tracing::instrument(skip_all)]
 fn apply_troop_decay(expansions: &mut ActiveExpansions) {
-    for troops in expansions.fronts.iter_mut() {
+    for troops in &mut expansions.fronts {
         if *troops != 0 {
             let abs_troops = troops.abs();
             let decay_rate = ((abs_troops as f32 * 0.1).max(1.0) as i32).min(abs_troops);

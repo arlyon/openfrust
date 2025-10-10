@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::types::*;
+use crate::types::{PlayerData, Alive, ActiveExpansions, PlayerInfoText, PlayerId};
 
 /// Handles player elimination and troop generation
 #[tracing::instrument(skip_all)]
@@ -9,7 +9,7 @@ pub fn check_eliminations_and_update_troops(
     expansions: &mut ActiveExpansions,
     commands: &mut Commands,
     text_query: &Query<(Entity, &PlayerInfoText)>,
-) -> Vec<(Entity, usize)> {
+) -> Vec<(Entity, PlayerId)> {
     let mut to_eliminate = Vec::new();
 
     for (entity, mut player) in players.iter_mut() {

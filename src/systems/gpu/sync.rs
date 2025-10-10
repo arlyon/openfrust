@@ -11,8 +11,8 @@ pub fn sync_board_to_gpu(board: Res<Board>, mut worker: ResMut<AppComputeWorker<
         .tiles
         .chunks_exact(2)
         .map(|chunk| {
-            let tile1 = chunk[0].0 as u32; // Lower 16 bits
-            let tile2 = chunk[1].0 as u32; // Upper 16 bits
+            let tile1 = u32::from(chunk[0].0); // Lower 16 bits
+            let tile2 = u32::from(chunk[1].0); // Upper 16 bits
             (tile2 << 16) | tile1
         })
         .collect();
@@ -21,5 +21,8 @@ pub fn sync_board_to_gpu(board: Res<Board>, mut worker: ResMut<AppComputeWorker<
     worker.write_slice("board_in", &board_data);
     worker.write_slice("board_out", &board_data);
 
-    info!("Synced initial board state to GPU ({} tiles)", board_data.len());
+    info!(
+        "Synced initial board state to GPU ({} tiles)",
+        board_data.len()
+    );
 }

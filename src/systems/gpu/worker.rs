@@ -57,7 +57,7 @@ impl ComputeShader for BorderAdjacencyShader {
     }
 }
 
-/// Shader definition for copying board_out to board_render for rendering
+/// Shader definition for copying `board_out` to `board_render` for rendering
 #[derive(TypePath)]
 struct CopyBoardShader;
 
@@ -82,8 +82,8 @@ impl ComputeWorker for ExpansionWorker {
             .tiles
             .chunks_exact(2)
             .map(|chunk| {
-                let tile1 = chunk[0].0 as u32; // Lower 16 bits
-                let tile2 = chunk[1].0 as u32; // Upper 16 bits
+                let tile1 = u32::from(chunk[0].0); // Lower 16 bits
+                let tile2 = u32::from(chunk[1].0); // Upper 16 bits
                 (tile2 << 16) | tile1
             })
             .collect();
@@ -97,15 +97,18 @@ impl ComputeWorker for ExpansionWorker {
                     board_width: BOARD_WIDTH as u32,
                     board_height: BOARD_HEIGHT as u32,
                     expansion_rate: EXPANSION_RATE_BASE,
-                    num_entities: NUM_ENTITIES as u32,
+                    num_entities: u32::from(NUM_ENTITIES),
                 },
             )
             // Direct lookup table: front_lookup[attacker * NUM_ENTITIES + defender] = tiles_to_conquer
-            .add_storage("front_lookup", &vec![0u32; NUM_ENTITIES * NUM_ENTITIES])
+            .add_storage(
+                "front_lookup",
+                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
+            )
             // Atomic counters using same indexing as front_lookup
             .add_storage(
                 "conquest_counters",
-                &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
             )
             // Ping-pong buffers for board state with staging for swap support
             .add_storage("board_in", &initial_board_data)
@@ -133,11 +136,11 @@ impl ComputeWorker for ExpansionWorker {
             // Buffer for per-player statistics
             .add_storage(
                 "player_stats",
-                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES],
+                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
             )
             .add_staging(
                 "player_stats",
-                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES],
+                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
             )
             // Process results pass: calculate player stats (no diffing)
             .add_pass::<ProcessResultsShader>(
@@ -149,11 +152,11 @@ impl ComputeWorker for ExpansionWorker {
             // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
             .add_storage(
                 "adjacency_matrix",
-                &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
             )
             .add_staging(
                 "adjacency_matrix",
-                &vec![0u32; NUM_ENTITIES * NUM_ENTITIES],
+                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
             )
             // Border adjacency pass: determine which players border each other
             .add_pass::<BorderAdjacencyShader>(

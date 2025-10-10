@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::types::*;
+use crate::types::{Board, PlayerData, Alive, ActiveExpansions, PlayerEntityMap};
 
 /// Legacy CPU-based expansion processing - no longer used with GPU orchestrator
 #[allow(dead_code)]

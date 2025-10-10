@@ -13,7 +13,7 @@ pub fn setup_gpu_perf_ui(mut commands: Commands) {
             display_labels: true,
             ..default()
         },
-        PerfUiEntryGpuTime::default(),
+        PerfUiEntryGpuTime,
     ));
 }
 
@@ -25,7 +25,7 @@ impl PerfUiEntry for PerfUiEntryGpuTime {
     type SystemParam = Res<'static, GpuOrchestratorTime>;
     type Value = f64;
 
-    fn label(&self) -> &str {
+    fn label(&self) -> &'static str {
         "Fixed Update GPU"
     }
 
@@ -33,11 +33,14 @@ impl PerfUiEntry for PerfUiEntryGpuTime {
         0
     }
 
-    fn update_value(&self, timing: &mut <Self::SystemParam as SystemParam>::Item<'_, '_>) -> Option<Self::Value> {
+    fn update_value(
+        &self,
+        timing: &mut <Self::SystemParam as SystemParam>::Item<'_, '_>,
+    ) -> Option<Self::Value> {
         Some(timing.get())
     }
 
     fn format_value(&self, value: &Self::Value) -> String {
-        format!("{:.2} ms", value)
+        format!("{value:.2} ms")
     }
 }

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::types::*;
+use crate::types::{Board, PlayerData, LivingPlayerUpdate};
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
 
 /// Update player info text with troop counts and position at territory center
@@ -14,7 +14,7 @@ pub fn update_player_info(
         return;
     }
 
-    for (player_info, mut text, mut transform) in text_query.iter_mut() {
+    for (player_info, mut text, mut transform) in &mut text_query {
         if let Some((_, player)) = players
             .iter()
             .find(|(e, _)| *e == player_info.player_entity)
