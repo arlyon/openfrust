@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 
-use super::gpu_orchestrator::AdjacencyMatrix;
 use crate::NUM_ENTITIES;
 use crate::types::{ActiveExpansions, Alive, NO_OWNER, PlayerData, PlayerId};
 
@@ -9,7 +8,7 @@ use crate::types::{ActiveExpansions, Alive, NO_OWNER, PlayerData, PlayerId};
 pub fn clear_disconnected_fronts(
     expansions: &mut ActiveExpansions,
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
-    adjacency: &AdjacencyMatrix,
+    adjacency: &[u32],
 ) {
     for a in 0..crate::NUM_ENTITIES {
         for b in (a + 1)..crate::NUM_ENTITIES {
@@ -22,7 +21,7 @@ pub fn clear_disconnected_fronts(
 
             // Check if these two players still share a border using adjacency matrix
             let shares_border =
-                adjacency.0[(u16::from(a) * NUM_ENTITIES + u16::from(b)) as usize] == 1;
+                adjacency[(u16::from(a) * NUM_ENTITIES + u16::from(b)) as usize] == 1;
 
             if !shares_border {
                 // Refund troops to both players

@@ -17,8 +17,8 @@ use iyes_perf_ui::{PerfUiAppExt, PerfUiPlugin};
 pub use types::*;
 
 // --- GAME CONSTANTS ---
-pub const BOARD_WIDTH: usize = 4096;
-pub const BOARD_HEIGHT: usize = 2048;
+pub const BOARD_WIDTH: usize = 8192;
+pub const BOARD_HEIGHT: usize = 4096;
 pub const NUM_PLAYERS: u16 = 100; // limit is u11 - 1 ie 2047
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
@@ -48,16 +48,12 @@ fn main() {
             AppComputePlugin,
         ))
         .add_perf_ui_simple_entry::<systems::PerfUiEntryGpuTime>()
-        .insert_resource(Time::<Fixed>::from_hz(5.0))
+        .insert_resource(Time::<Fixed>::from_hz(10.0))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         // Initialize Board before worker plugin (worker needs it during build)
         .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))
-        // Initialize adjacency matrix (populated by GPU)
-        .insert_resource(systems::AdjacencyMatrix(vec![
-            0;
-            (NUM_ENTITIES * NUM_ENTITIES)
-                as usize
-        ]))
+        // Initialize frame manager for async GPU pipeline (2 frames in flight)
+        .insert_resource(systems::GpuFrameManager::default())
         // Initialize GPU timing resource
         .insert_resource(systems::GpuOrchestratorTime::default())
         .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())

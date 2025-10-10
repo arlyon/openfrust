@@ -2,7 +2,6 @@ use bevy::prelude::*;
 use bevy::tasks::{ComputeTaskPool, ParallelSlice};
 use std::sync::Mutex;
 
-use super::gpu_orchestrator::AdjacencyMatrix;
 use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerId};
 use crate::{NO_OWNER, NUM_ENTITIES};
 
@@ -11,7 +10,7 @@ use crate::{NO_OWNER, NUM_ENTITIES};
 pub fn assign_and_log_expansions(
     players: &mut Query<(Entity, &mut PlayerData), With<Alive>>,
     expansions: &mut ActiveExpansions,
-    adjacency: &AdjacencyMatrix,
+    adjacency: &[u32],
     pool: &ComputeTaskPool,
 ) {
     // Assign troops to expansion fronts in parallel
@@ -83,7 +82,7 @@ pub fn assign_and_log_expansions(
 /// Returns a list of (attacker, defender, troops) assignments to be applied
 fn calculate_player_assignments(
     player: &PlayerData,
-    adjacency: &AdjacencyMatrix,
+    adjacency: &[u32],
 ) -> Vec<(PlayerId, PlayerId, i32)> {
     if player.troops < 10 {
         return Vec::new();
@@ -94,7 +93,7 @@ fn calculate_player_assignments(
     for neighbor_id in 0..NUM_ENTITIES {
         let neighbor_id = PlayerId::new_unchecked(neighbor_id);
         if neighbor_id != player.id
-            && adjacency.0[(u16::from(player.id) * NUM_ENTITIES + u16::from(neighbor_id)) as usize]
+            && adjacency[(u16::from(player.id) * NUM_ENTITIES + u16::from(neighbor_id)) as usize]
                 == 1
         // Only expand into wilderness
             && neighbor_id == NO_OWNER

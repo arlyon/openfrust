@@ -12,8 +12,8 @@ mod player_info;
 mod setup;
 
 pub use border_material::BorderMaterial;
-pub use gpu::{ExpansionWorker, sync_board_to_gpu};
-pub use gpu_orchestrator::{gpu_orchestrator, AdjacencyMatrix, GpuOrchestratorTime};
+pub use gpu::{ExpansionWorker, GpuFrameManager, sync_board_to_gpu};
+pub use gpu_orchestrator::{gpu_orchestrator, GpuOrchestratorTime};
 pub use map_renderer::setup_map_texture;
 pub use perf_ui::{setup_gpu_perf_ui, PerfUiEntryGpuTime};
 pub use player_info::update_player_info;
