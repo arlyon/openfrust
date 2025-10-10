@@ -13,7 +13,9 @@ struct SimParams {
 
 @compute @workgroup_size(16, 16, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let index = global_id.y * params.board_width + global_id.x;
+    // Data is packed: 2 tiles per u32, so the array width is board_width/2
+    let packed_width = params.board_width / 2u;
+    let index = global_id.y * packed_width + global_id.x;
     if (index < arrayLength(&board_out)) {
         board_render[index] = board_out[index];
     }

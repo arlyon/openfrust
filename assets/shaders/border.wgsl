@@ -13,8 +13,14 @@ fn get_owner_at(coord: vec2<i32>) -> u32 {
     }
 
     // Calculate 1D index from 2D pixel coordinates
-    let index = u32(coord.y) * u32(texture_size.x) + u32(coord.x);
-    let tile_data = board_data[index];
+    let linear_index = u32(coord.y) * u32(texture_size.x) + u32(coord.x);
+
+    // Unpack tile data from packed storage (2 tiles per u32)
+    let packed_idx = linear_index / 2u;
+    let sub_idx = linear_index % 2u;
+    let packed_val = board_data[packed_idx];
+    let tile_data = (packed_val >> (sub_idx * 16u)) & 0xFFFFu;
+
     return tile_data & 0x0FFFu;
 }
 

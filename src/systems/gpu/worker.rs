@@ -76,8 +76,17 @@ impl ComputeWorker for ExpansionWorker {
         // Get initial board state from the world
         let board = world.resource::<Board>();
 
-        // Convert Tile(u16) to u32 for WGSL compatibility (WGSL doesn't have u16 in storage buffers)
-        let initial_board_data: Vec<u32> = board.tiles.iter().map(|t| t.0 as u32).collect();
+        // Pack two Tile(u16) values into each u32 for better memory efficiency
+        // Each u32 contains: [tile2 (upper 16 bits) | tile1 (lower 16 bits)]
+        let initial_board_data: Vec<u32> = board
+            .tiles
+            .chunks_exact(2)
+            .map(|chunk| {
+                let tile1 = chunk[0].0 as u32; // Lower 16 bits
+                let tile2 = chunk[1].0 as u32; // Upper 16 bits
+                (tile2 << 16) | tile1
+            })
+            .collect();
 
         // Build the compute worker with all necessary buffers
         AppComputeWorkerBuilder::new(world)
@@ -106,8 +115,9 @@ impl ComputeWorker for ExpansionWorker {
             // Create a read-write storage asset for rendering (synced from board_out via copy pass)
             .add_rw_storage_asset("board_render", &initial_board_data)
             // Define the expansion compute pass with 16x16 workgroup size
+            // Each thread processes 2 tiles (one packed u32), so dispatch width is halved
             .add_pass::<ExpansionShader>(
-                [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
+                [BOARD_WIDTH as u32 / 32, BOARD_HEIGHT as u32 / 16, 1],
                 &[
                     "params",
                     "front_lookup",
@@ -152,8 +162,9 @@ impl ComputeWorker for ExpansionWorker {
                 &[],
             )
             // Copy board_out to board_render for rendering (GPU-to-GPU)
+            // Data is packed, so width dispatch is halved
             .add_pass::<CopyBoardShader>(
-                [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
+                [BOARD_WIDTH as u32 / 32, BOARD_HEIGHT as u32 / 16, 1],
                 &["params", "board_out"],
                 &["board_render"],
             )

@@ -13,6 +13,19 @@ struct SimParams {
 @group(0) @binding(3) var<storage, read> board_in: array<u32>;
 @group(0) @binding(4) var<storage, read_write> board_out: array<u32>;
 
+// Unpack a 16-bit tile from a u32 containing two tiles
+fn unpack_tile_data(linear_idx: u32) -> u32 {
+    let packed_idx = linear_idx / 2u;
+    let sub_idx = linear_idx % 2u;
+    let packed_val = board_in[packed_idx];
+    return (packed_val >> (sub_idx * 16u)) & 0xFFFFu;
+}
+
+// Pack two 16-bit tiles into a u32
+fn pack_tiles(tile1: u32, tile2: u32) -> u32 {
+    return ((tile2 & 0xFFFFu) << 16u) | (tile1 & 0xFFFFu);
+}
+
 // Extract owner ID from tile data (bits 0-11)
 fn get_owner(tile_data: u32) -> u32 {
     return tile_data & 0x0FFFu;
@@ -48,23 +61,9 @@ fn get_lookup_index(attacker: u32, defender: u32) -> u32 {
     return attacker * params.num_entities + defender;
 }
 
-@compute @workgroup_size(16, 16, 1)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let pos = global_id.xy;
-
-    // Bounds check
-    if pos.x >= params.board_width || pos.y >= params.board_height {
-        return;
-    }
-
-    // Calculate 1D index
-    let index = get_index(pos.x, pos.y);
-
-    // Read the current tile data
-    let tile_data = board_in[index];
+// Process a single tile and return updated tile data
+fn process_tile(x: u32, y: u32, tile_data: u32) -> u32 {
     let current_owner = get_owner(tile_data);
-
-    // By default, copy the current state
     var new_tile_data = tile_data;
 
     // Check all 8 neighbors to see if this tile can be conquered
@@ -74,17 +73,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         vec2<i32>(-1,  1), vec2<i32>(0,  1), vec2<i32>(1,  1)
     );
 
-    var potential_attackers: array<u32, 8>;
-    var attacker_count = 0u;
-
     // Find all neighboring tiles with different owners (potential attackers)
     for (var i = 0; i < 8; i++) {
-        let nx = i32(pos.x) + offsets[i].x;
-        let ny = i32(pos.y) + offsets[i].y;
+        let nx = i32(x) + offsets[i].x;
+        let ny = i32(y) + offsets[i].y;
 
         if in_bounds(nx, ny) {
             let neighbor_index = get_index(u32(nx), u32(ny));
-            let neighbor_owner = get_owner(board_in[neighbor_index]);
+            let neighbor_tile = unpack_tile_data(neighbor_index);
+            let neighbor_owner = get_owner(neighbor_tile);
 
             if neighbor_owner != current_owner {
                 // O(1) lookup: attacker = neighbor_owner, defender = current_owner
@@ -106,6 +103,39 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    // Write the result
-    board_out[index] = new_tile_data;
+    return new_tile_data;
+}
+
+@compute @workgroup_size(16, 16, 1)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    // Each thread now processes 2 tiles (one packed u32) to avoid race conditions
+    let packed_x = global_id.x * 2u;
+    let y = global_id.y;
+
+    // Bounds check for the packed tile pair
+    if packed_x >= params.board_width || y >= params.board_height {
+        return;
+    }
+
+    // Calculate the packed index
+    let index1 = get_index(packed_x, y);
+    let packed_idx = index1 / 2u;
+
+    // Read the packed value containing two tiles
+    let packed_val = board_in[packed_idx];
+    let tile1_data = packed_val & 0xFFFFu;
+    let tile2_data = (packed_val >> 16u) & 0xFFFFu;
+
+    // Process first tile
+    let new_tile1 = process_tile(packed_x, y, tile1_data);
+
+    // Process second tile if it's within bounds
+    var new_tile2 = tile2_data;
+    if packed_x + 1u < params.board_width {
+        new_tile2 = process_tile(packed_x + 1u, y, tile2_data);
+    }
+
+    // Pack and write the result
+    let new_packed = (new_tile2 << 16u) | new_tile1;
+    board_out[packed_idx] = new_packed;
 }

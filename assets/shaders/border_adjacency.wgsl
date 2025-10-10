@@ -11,6 +11,14 @@ struct SimParams {
 @group(0) @binding(1) var<storage, read> board: array<u32>;
 @group(0) @binding(2) var<storage, read_write> adjacency: array<atomic<u32>>;
 
+// Unpack a 16-bit tile from a u32 containing two tiles
+fn unpack_tile_data(linear_idx: u32) -> u32 {
+    let packed_idx = linear_idx / 2u;
+    let sub_idx = linear_idx % 2u;
+    let packed_val = board[packed_idx];
+    return (packed_val >> (sub_idx * 16u)) & 0xFFFFu;
+}
+
 // Extract owner ID from tile data (bits 0-11)
 fn get_owner(tile_data: u32) -> u32 {
     return tile_data & 0x0FFFu;
@@ -36,7 +44,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let index = get_index(pos.x, pos.y);
-    let owner = get_owner(board[index]);
+    let tile_data = unpack_tile_data(index);
+    let owner = get_owner(tile_data);
 
     // Check 2 neighbors (right and down) to process each border only once
     let offsets = array<vec2<i32>, 2>(
@@ -48,7 +57,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let npos = vec2<i32>(pos) + offsets[i];
         if (in_bounds(npos.x, npos.y)) {
             let n_index = get_index(u32(npos.x), u32(npos.y));
-            let n_owner = get_owner(board[n_index]);
+            let n_tile_data = unpack_tile_data(n_index);
+            let n_owner = get_owner(n_tile_data);
 
             if (owner != n_owner) {
                 // This is a border. Flag that these two players are adjacent.
