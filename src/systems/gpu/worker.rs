@@ -67,6 +67,19 @@ impl ComputeShader for CopyBoardShader {
     }
 }
 
+/// Workgroup size configuration (must match WGSL @workgroup_size)
+const WORKGROUP_SIZE_X: u32 = 16;
+const WORKGROUP_SIZE_Y: u32 = 16;
+
+/// Number of tiles each thread processes horizontally in the expansion shader
+/// This is 2 because we pack two tiles into each u32
+const EXPANSION_TILES_PER_THREAD_X: u32 = 2;
+
+/// Helper function to calculate dispatch size with ceiling division
+const fn div_ceil(a: u32, b: u32) -> u32 {
+    (a + b - 1) / b
+}
+
 /// Compute worker for territory expansion
 #[derive(Resource)]
 pub struct ExpansionWorker;
@@ -87,6 +100,20 @@ impl ComputeWorker for ExpansionWorker {
                 (tile2 << 16) | tile1
             })
             .collect();
+
+        // Calculate dispatch sizes dynamically based on workgroup configuration
+        let expansion_dispatch_x = div_ceil(
+            BOARD_WIDTH as u32,
+            WORKGROUP_SIZE_X * EXPANSION_TILES_PER_THREAD_X,
+        );
+        let expansion_dispatch_y = div_ceil(BOARD_HEIGHT as u32, WORKGROUP_SIZE_Y);
+
+        let standard_dispatch_x = div_ceil(BOARD_WIDTH as u32, WORKGROUP_SIZE_X);
+        let standard_dispatch_y = div_ceil(BOARD_HEIGHT as u32, WORKGROUP_SIZE_Y);
+
+        // Copy board uses packed data, so same dispatch as expansion
+        let copy_dispatch_x = expansion_dispatch_x;
+        let copy_dispatch_y = expansion_dispatch_y;
 
         // Build the compute worker with all necessary buffers
         AppComputeWorkerBuilder::new(world)
@@ -117,10 +144,10 @@ impl ComputeWorker for ExpansionWorker {
             .add_staging("board_out", &initial_board_data)
             // Create a read-write storage asset for rendering (synced from board_out via copy pass)
             .add_rw_storage_asset("board_render", &initial_board_data)
-            // Define the expansion compute pass with 16x16 workgroup size
-            // Each thread processes 2 tiles (one packed u32), so dispatch width is halved
+            // Define the expansion compute pass
+            // Each thread processes 2 tiles (one packed u32)
             .add_pass::<ExpansionShader>(
-                [BOARD_WIDTH as u32 / 32, BOARD_HEIGHT as u32 / 16, 1],
+                [expansion_dispatch_x, expansion_dispatch_y, 1],
                 &[
                     "params",
                     "front_lookup",
@@ -144,7 +171,7 @@ impl ComputeWorker for ExpansionWorker {
             )
             // Process results pass: calculate player stats (no diffing)
             .add_pass::<ProcessResultsShader>(
-                [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
+                [standard_dispatch_x, standard_dispatch_y, 1],
                 &["params", "board_out", "player_stats"],
                 &[],
             )
@@ -160,14 +187,14 @@ impl ComputeWorker for ExpansionWorker {
             )
             // Border adjacency pass: determine which players border each other
             .add_pass::<BorderAdjacencyShader>(
-                [BOARD_WIDTH as u32 / 16, BOARD_HEIGHT as u32 / 16, 1],
+                [standard_dispatch_x, standard_dispatch_y, 1],
                 &["params", "board_out", "adjacency_matrix"],
                 &[],
             )
             // Copy board_out to board_render for rendering (GPU-to-GPU)
-            // Data is packed, so width dispatch is halved
+            // Data is packed, so uses same dispatch as expansion
             .add_pass::<CopyBoardShader>(
-                [BOARD_WIDTH as u32 / 32, BOARD_HEIGHT as u32 / 16, 1],
+                [copy_dispatch_x, copy_dispatch_y, 1],
                 &["params", "board_out"],
                 &["board_render"],
             )
