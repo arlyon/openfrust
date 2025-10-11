@@ -9,8 +9,10 @@ struct SimParams {
 
 struct GpuPlayerStats {
     tile_count: atomic<u32>,
-    sum_x: atomic<u64>,
-    sum_y: atomic<u64>,
+    sum_x_low: atomic<u32>,
+    sum_x_high: atomic<u32>,
+    sum_y_low: atomic<u32>,
+    sum_y_high: atomic<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: SimParams;
@@ -50,6 +52,20 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Every tile contributes to its owner's statistics
     // This builds a complete picture of the final board state
     atomicAdd(&player_stats[owner_out].tile_count, 1u);
-    atomicAdd(&player_stats[owner_out].sum_x, u64(pos.x));
-    atomicAdd(&player_stats[owner_out].sum_y, u64(pos.y));
+
+    // --- Inlined 64-bit atomic add for sum_x ---
+    let value_x = pos.x;
+    let old_low_x = atomicAdd(&player_stats[owner_out].sum_x_low, value_x);
+    // Check for overflow and carry to the high word
+    if (old_low_x > (0xFFFFFFFFu - value_x)) {
+        atomicAdd(&player_stats[owner_out].sum_x_high, 1u);
+    }
+
+    // --- Inlined 64-bit atomic add for sum_y ---
+    let value_y = pos.y;
+    let old_low_y = atomicAdd(&player_stats[owner_out].sum_y_low, value_y);
+    // Check for overflow and carry to the high word
+    if (old_low_y > (0xFFFFFFFFu - value_y)) {
+        atomicAdd(&player_stats[owner_out].sum_y_high, 1u);
+    }
 }

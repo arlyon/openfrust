@@ -20,7 +20,6 @@ pub struct SimParams {
 #[repr(C)]
 pub struct GpuPlayerStats {
     pub tile_count: u32,
-    pub _padding1: u32,
     pub sum_x_low: u32,
     pub sum_x_high: u32,
     pub sum_y_low: u32,
