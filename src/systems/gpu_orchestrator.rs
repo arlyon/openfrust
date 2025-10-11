@@ -3,20 +3,19 @@ use bevy::tasks::ComputeTaskPool;
 use bevy_app_compute::prelude::*;
 use bytemuck::Zeroable;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
 
 use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
 use super::gpu::{ExpansionWorker, GpuFrameManager, GpuPlayerStats};
 use super::player_elimination::check_eliminations_and_update_troops;
-use crate::types::{PlayerData, Alive, ActiveExpansions, PlayerInfoText, PlayerId};
+use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerId, PlayerInfoText};
 use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
 
 /// Resource tracking GPU execution time in milliseconds
 #[derive(Resource)]
 pub struct GpuOrchestratorTime {
     time_ms: AtomicU64,
-    dispatch_time: Option<Instant>,
+    dispatch_time: Option<f64>,
 }
 
 impl GpuOrchestratorTime {
@@ -35,14 +34,14 @@ impl GpuOrchestratorTime {
         self.time_ms.load(Ordering::Relaxed) as f64
     }
 
-    pub fn mark_dispatch(&mut self) {
-        self.dispatch_time = Some(Instant::now());
+    pub fn mark_dispatch(&mut self, time: &Time) {
+        self.dispatch_time = Some(time.elapsed_secs_f64());
     }
 
-    pub fn mark_ready(&mut self) {
+    pub fn mark_ready(&mut self, time: &Time) {
         if let Some(start) = self.dispatch_time.take() {
-            let elapsed_us = start.elapsed().as_micros() as u64;
-            self.set((elapsed_us + 500) / 1000); // Round to nearest ms
+            let elapsed_s = time.elapsed_secs_f64() - start;
+            self.set((elapsed_s * 1000.0) as u64);
         }
     }
 }
@@ -68,6 +67,7 @@ pub fn gpu_orchestrator(
     mut frame_manager: ResMut<GpuFrameManager>,
     mut worker: ResMut<AppComputeWorker<ExpansionWorker>>,
     mut timing: ResMut<GpuOrchestratorTime>,
+    time: Res<Time>,
 ) {
     // === PIPELINE STAGE 1: Check GPU Readiness ===
     // During warmup (first 2 frames), we don't check readiness
@@ -80,7 +80,7 @@ pub fn gpu_orchestrator(
         }
 
         // GPU work from previous tick is complete - record timing
-        timing.mark_ready();
+        timing.mark_ready(&time);
     }
 
     // === PIPELINE STAGE 2: Readback GPU Results ===
@@ -93,8 +93,7 @@ pub fn gpu_orchestrator(
         // Store readback results in the write frame buffer
         frame_manager.player_stats_buffers[write_frame] =
             worker.read_vec::<GpuPlayerStats>("player_stats");
-        frame_manager.adjacency_buffers[write_frame] =
-            worker.read_vec::<u32>("adjacency_matrix");
+        frame_manager.adjacency_buffers[write_frame] = worker.read_vec::<u32>("adjacency_matrix");
     }
 
     // === PIPELINE STAGE 3: Use Data from Previous Frame ===
@@ -122,7 +121,7 @@ pub fn gpu_orchestrator(
             &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
         );
 
-        timing.mark_dispatch();
+        timing.mark_dispatch(&time);
         frame_manager.advance_frame();
         return;
     }
@@ -193,7 +192,7 @@ pub fn gpu_orchestrator(
     // === PIPELINE STAGE 6: Dispatch & Advance ===
     // Worker will automatically dispatch at the end of this frame
     // Mark dispatch time to measure GPU execution
-    timing.mark_dispatch();
+    timing.mark_dispatch(&time);
 
     // Advance to the next frame
     frame_manager.advance_frame();
