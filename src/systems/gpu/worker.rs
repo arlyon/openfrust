@@ -26,6 +26,16 @@ pub struct GpuPlayerStats {
     pub sum_y_high: u32,
 }
 
+/// Shader definition for clearing atomic buffers
+#[derive(TypePath)]
+struct ClearBuffersShader;
+
+impl ComputeShader for ClearBuffersShader {
+    fn shader() -> ShaderRef {
+        "shaders/clear_buffers.wgsl".into()
+    }
+}
+
 /// Shader definition for the expansion compute pass
 #[derive(TypePath)]
 struct ExpansionShader;
@@ -114,6 +124,15 @@ impl ComputeWorker for ExpansionWorker {
         let copy_dispatch_x = expansion_dispatch_x;
         let copy_dispatch_y = expansion_dispatch_y;
 
+        // Calculate dispatch size for the clear pass
+        // We need to clear three buffers of different sizes. We'll dispatch enough threads
+        // to cover the largest one. The shader has `if` guards to prevent out-of-bounds writes.
+        let conquest_len = (NUM_ENTITIES * NUM_ENTITIES) as u32;
+        let stats_len = (NUM_ENTITIES as u32) * 6; // 6 u32s per GpuPlayerStats
+        let adjacency_len = (NUM_ENTITIES * NUM_ENTITIES) as u32;
+        let max_len = conquest_len.max(stats_len).max(adjacency_len);
+        let clear_dispatch_x = div_ceil(max_len, 256); // 256 is workgroup_size in clear_buffers.wgsl
+
         // Build the compute worker with all necessary buffers
         AppComputeWorkerBuilder::new(world)
             // Uniform buffer for global simulation settings
@@ -132,17 +151,40 @@ impl ComputeWorker for ExpansionWorker {
                 &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
             )
             // Atomic counters using same indexing as front_lookup
-            .add_storage(
+            .add_rw_storage(
                 "conquest_counters",
                 &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
             )
             // Ping-pong buffers for board state with staging for swap support
             .add_storage("board_in", &initial_board_data)
-            .add_staging("board_in", &initial_board_data)
-            .add_storage("board_out", &initial_board_data)
-            .add_staging("board_out", &initial_board_data)
+            .add_rw_storage("board_out", &initial_board_data)
             // Create a read-write storage asset for rendering (synced from board_out via copy pass)
             .add_rw_storage_asset("board_render", &initial_board_data)
+            // Buffer for per-player statistics
+            .add_storage(
+                "player_stats",
+                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
+            )
+            .add_staging(
+                "player_stats",
+                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
+            )
+            // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
+            .add_storage(
+                "adjacency_matrix",
+                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
+            )
+            .add_staging(
+                "adjacency_matrix",
+                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
+            )
+            // --- CLEAR PASS: Must run first to ensure buffers are zeroed before use ---
+            // This prevents CPU-GPU race conditions by making buffer clearing part of the GPU pipeline
+            .add_pass::<ClearBuffersShader>(
+                [clear_dispatch_x, 1, 1],
+                &["conquest_counters", "player_stats", "adjacency_matrix"],
+                &[], // No storage asset buffers
+            )
             // Define the expansion compute pass
             // Each thread processes 2 tiles (one packed u32)
             .add_pass::<ExpansionShader>(
@@ -154,41 +196,21 @@ impl ComputeWorker for ExpansionWorker {
                     "board_in",
                     "board_out",
                 ],
-                &[],
+                &[], // No storage asset buffers
             )
             // Automatically swap board_in and board_out after expansion
             .add_swap("board_in", "board_out")
-            // --- GPU REDUCTION PASS ---
-            // Buffer for per-player statistics
-            .add_storage(
-                "player_stats",
-                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
-            )
-            .add_staging(
-                "player_stats",
-                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
-            )
             // Process results pass: calculate player stats (no diffing)
             .add_pass::<ProcessResultsShader>(
                 [standard_dispatch_x, standard_dispatch_y, 1],
                 &["params", "board_out", "player_stats"],
-                &[],
-            )
-            // --- BORDER ADJACENCY PASS ---
-            // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
-            .add_storage(
-                "adjacency_matrix",
-                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
-            )
-            .add_staging(
-                "adjacency_matrix",
-                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
+                &[], // No storage asset buffers
             )
             // Border adjacency pass: determine which players border each other
             .add_pass::<BorderAdjacencyShader>(
                 [standard_dispatch_x, standard_dispatch_y, 1],
                 &["params", "board_out", "adjacency_matrix"],
-                &[],
+                &[], // No storage asset buffers
             )
             // Copy board_out to board_render for rendering (GPU-to-GPU)
             // Data is packed, so uses same dispatch as expansion

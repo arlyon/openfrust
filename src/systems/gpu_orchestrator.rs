@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy::tasks::ComputeTaskPool;
 use bevy_app_compute::prelude::*;
-use bytemuck::Zeroable;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::disconnected_fronts::clear_disconnected_fronts;
@@ -108,18 +107,8 @@ pub fn gpu_orchestrator(
         // Prepare initial GPU data
         let front_lookup = prepare_front_lookup(&expansions);
         worker.write_slice("front_lookup", &front_lookup);
-        worker.write_slice(
-            "conquest_counters",
-            &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
-        );
-        worker.write_slice(
-            "player_stats",
-            &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
-        );
-        worker.write_slice(
-            "adjacency_matrix",
-            &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
-        );
+
+        // Note: Buffer clearing is handled by ClearBuffersShader on the GPU
 
         timing.mark_dispatch(&time);
         frame_manager.advance_frame();
@@ -165,23 +154,9 @@ pub fn gpu_orchestrator(
     // Write data to GPU buffers for the next frame
     worker.write_slice("front_lookup", &front_lookup);
 
-    // Reset atomic counters for this tick
-    worker.write_slice(
-        "conquest_counters",
-        &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
-    );
-
-    // Reset player_stats for next tick
-    worker.write_slice(
-        "player_stats",
-        &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
-    );
-
-    // Reset adjacency_matrix for next tick
-    worker.write_slice(
-        "adjacency_matrix",
-        &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
-    );
+    // Note: Buffer clearing (conquest_counters, player_stats, adjacency_matrix) is now
+    // handled by the ClearBuffersShader on the GPU to prevent CPU-GPU race conditions.
+    // The GPU pipeline ensures proper synchronization by clearing buffers before use.
 
     // 4. Clear expansion fronts for disconnected borders and refund troops
     clear_disconnected_fronts(&mut expansions, &mut players, adjacency);
