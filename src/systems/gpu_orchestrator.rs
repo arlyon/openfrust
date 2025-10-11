@@ -7,8 +7,10 @@ use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
 use super::gpu::{ExpansionWorker, GpuFrameManager};
 use super::player_elimination::check_eliminations_and_update_troops;
-use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerId, PlayerInfoText};
-use crate::{ADJACENCY_MATRIX_SIZE, EXPANSION_RATE_BASE, NUM_ENTITIES};
+use crate::types::{
+    ActiveExpansions, Alive, PlayerData, PlayerEntityMap, PlayerId, PlayerInfoText,
+};
+use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
 
 /// Resource tracking GPU execution time in milliseconds
 #[derive(Resource)]
@@ -67,6 +69,7 @@ pub fn gpu_orchestrator(
     mut worker: ResMut<AppComputeWorker<ExpansionWorker>>,
     mut timing: ResMut<GpuOrchestratorTime>,
     time: Res<Time>,
+    player_map: Res<PlayerEntityMap>,
 ) {
     // === PIPELINE STAGE 1: Check GPU Readiness ===
     // During warmup (first 2 frames), we don't check readiness
@@ -163,7 +166,7 @@ pub fn gpu_orchestrator(
     // The GPU pipeline ensures proper synchronization by clearing buffers before use.
 
     // 4. Clear expansion fronts for disconnected borders and refund troops
-    clear_disconnected_fronts(&mut expansions, &mut players, adjacency);
+    clear_disconnected_fronts(&mut expansions, players, adjacency, &player_map);
 
     // 5. Apply troop decay
     apply_troop_decay(&mut expansions);
@@ -177,32 +180,40 @@ pub fn gpu_orchestrator(
     frame_manager.advance_frame();
 }
 
-/// Convert `ActiveExpansions` to GPU-friendly direct lookup table
-/// Index = attacker * `NUM_ENTITIES` + defender, Value = `tiles_to_conquer`
+/// Convert `ActiveExpansions` to GPU-friendly packed lookup table
+/// Uses triangular packing: positive = a->b, negative = b->a
 #[tracing::instrument(skip_all)]
-fn prepare_front_lookup(expansions: &ActiveExpansions) -> Vec<u32> {
-    // Create flattened 2D array: [attacker][defender] -> tiles_to_conquer
-    let mut lookup = vec![0; ADJACENCY_MATRIX_SIZE as usize];
+fn prepare_front_lookup(expansions: &ActiveExpansions) -> Vec<i32> {
+    // Create packed array: NUM_PAIRS entries with signed values
+    let mut lookup = vec![0i32; crate::NUM_PAIRS as usize];
 
     // Iterate through all possible player pairs
     for a in 0..NUM_ENTITIES {
         for b in (a + 1)..NUM_ENTITIES {
-            let net_troops =
-                expansions.get_net_troops(PlayerId::new_unchecked(a), PlayerId::new_unchecked(b));
+            let a_id = PlayerId::new_unchecked(a);
+            let b_id = PlayerId::new_unchecked(b);
+            let net_troops = expansions.get_net_troops(a_id, b_id);
+
             if net_troops == 0 {
                 continue;
             }
 
-            // Determine attacker and defender based on sign
-            let (attacker, defender) = if net_troops > 0 { (a, b) } else { (b, a) };
-            let velocity = net_troops.abs();
-
             // Calculate how many tiles to conquer this tick
-            let tiles_to_move = (velocity as f32 * EXPANSION_RATE_BASE / 100.0).max(0.1) as u32;
+            let velocity = net_troops.abs();
+            let tiles_to_move =
+                ((velocity as f32 * EXPANSION_RATE_BASE / 100.0).max(0.1) as i32).min(i32::MAX);
 
             if tiles_to_move > 0 {
-                // Direct lookup: O(1) access on GPU
-                lookup[(attacker * NUM_ENTITIES + defender) as usize] = tiles_to_move;
+                // Store signed value: positive = a->b, negative = b->a
+                let signed_tiles = if net_troops > 0 {
+                    tiles_to_move
+                } else {
+                    -tiles_to_move
+                };
+
+                // Use the same pair_index formula as ActiveExpansions
+                let idx = ActiveExpansions::pair_index(a_id, b_id);
+                lookup[idx] = signed_tiles;
             }
         }
     }

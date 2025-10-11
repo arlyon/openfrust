@@ -8,8 +8,8 @@ struct SimParams {
 }
 
 @group(0) @binding(0) var<uniform> params: SimParams;
-@group(0) @binding(1) var<storage, read> front_lookup: array<u32>;
-@group(0) @binding(2) var<storage, read_write> conquest_counters: array<atomic<u32>>;
+@group(0) @binding(1) var<storage, read> front_lookup: array<i32>; // Packed: NUM_PAIRS with sign
+@group(0) @binding(2) var<storage, read_write> conquest_counters: array<atomic<u32>>; // Packed: NUM_PAIRS
 @group(0) @binding(3) var<storage, read> board_in: array<u32>;
 @group(0) @binding(4) var<storage, read_write> board_out: array<u32>;
 
@@ -56,9 +56,22 @@ fn get_index(x: u32, y: u32) -> u32 {
     return y * params.board_width + x;
 }
 
-// Get lookup index for attacker-defender pair (O(1) instead of O(N) search)
-fn get_lookup_index(attacker: u32, defender: u32) -> u32 {
-    return attacker * params.num_entities + defender;
+// Get packed pair index for two players (triangular packing)
+// Returns (index, needs_negation) where needs_negation indicates if we should flip the sign
+fn get_pair_index(p1: u32, p2: u32) -> vec2<u32> {
+    if (p1 == p2) { return vec2(0xFFFFFFFFu, 0u); } // Invalid
+
+    let x = min(p1, p2);
+    let y = max(p1, p2);
+    let n = params.num_entities;
+
+    // Same formula as ActiveExpansions::pair_index
+    let index = n * x - (x * (x + 1u)) / 2u + y - x - 1u;
+
+    // If p1 > p2, we need to negate the value since the stored value represents x->y
+    let needs_flip = u32(p1 > p2);
+
+    return vec2(index, needs_flip);
 }
 
 // Process a single tile and return updated tile data
@@ -84,13 +97,25 @@ fn process_tile(x: u32, y: u32, tile_data: u32) -> u32 {
             let neighbor_owner = get_owner(neighbor_tile);
 
             if neighbor_owner != current_owner {
-                // O(1) lookup: attacker = neighbor_owner, defender = current_owner
-                let lookup_idx = get_lookup_index(neighbor_owner, current_owner);
-                let tiles_to_conquer = front_lookup[lookup_idx];
+                // Get the packed index for this pair
+                let pair_info = get_pair_index(neighbor_owner, current_owner);
+                if (pair_info.x == 0xFFFFFFFFu) { continue; }
 
-                if tiles_to_conquer > 0u {
+                let pair_idx = pair_info.x;
+                let needs_flip = pair_info.y;
+
+                // Read the signed value and flip if needed
+                var net_troops = front_lookup[pair_idx];
+                if (needs_flip == 1u) {
+                    net_troops = -net_troops;
+                }
+
+                // Positive means neighbor is attacking current_owner
+                if net_troops > 0 {
+                    let tiles_to_conquer = u32(net_troops);
+
                     // This neighbor is actively attacking - try to claim a conquest slot
-                    let old_counter = atomicAdd(&conquest_counters[lookup_idx], 1u);
+                    let old_counter = atomicAdd(&conquest_counters[pair_idx], 1u);
 
                     // If we successfully claimed a slot within the allocation
                     if old_counter < tiles_to_conquer {

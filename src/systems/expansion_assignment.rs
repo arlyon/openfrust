@@ -78,6 +78,32 @@ pub fn assign_and_log_expansions(
     }
 }
 
+/// Check if two players are adjacent using bit-packed adjacency matrix
+fn are_adjacent_packed(adjacency: &[u32], p1: PlayerId, p2: PlayerId) -> bool {
+    let n = NUM_ENTITIES as u32;
+    let p1_u32 = u16::from(p1) as u32;
+    let p2_u32 = u16::from(p2) as u32;
+
+    if p1_u32 == p2_u32 {
+        return false;
+    }
+
+    let x = p1_u32.min(p2_u32);
+    let y = p1_u32.max(p2_u32);
+
+    // Same formula as shader and disconnected_fronts
+    let linear_bit_index = (n * x - (x * (x + 1)) / 2 + y - x - 1) as usize;
+
+    let word_index = linear_bit_index / 32;
+    let bit_in_word = linear_bit_index % 32;
+
+    if word_index >= adjacency.len() {
+        return false;
+    }
+
+    (adjacency[word_index] >> bit_in_word) & 1 == 1
+}
+
 /// AI assigns troops to expansion fronts based on adjacency matrix
 /// Returns a list of (attacker, defender, troops) assignments to be applied
 fn calculate_player_assignments(
@@ -88,16 +114,11 @@ fn calculate_player_assignments(
         return Vec::new();
     }
 
-    // Find all neighbors from adjacency matrix
+    // Find all neighbors from bit-packed adjacency matrix
     let mut neighbors = Vec::new();
     for neighbor_id in 0..NUM_ENTITIES {
         let neighbor_id = PlayerId::new_unchecked(neighbor_id);
-        if neighbor_id != player.id
-            && adjacency[(u16::from(player.id) * NUM_ENTITIES + u16::from(neighbor_id)) as usize]
-                == 1
-        // Only expand into wilderness
-            && neighbor_id == NO_OWNER
-        {
+        if neighbor_id != player.id && are_adjacent_packed(adjacency, player.id, neighbor_id) {
             neighbors.push(neighbor_id);
         }
     }

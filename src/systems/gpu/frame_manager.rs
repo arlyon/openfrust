@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use super::GpuPlayerStats;
-use crate::{ADJACENCY_MATRIX_SIZE, NUM_ENTITIES};
+use crate::NUM_ENTITIES;
 
 /// Manages the asynchronous GPU pipeline with 2 frames in flight.
 ///
@@ -35,7 +35,9 @@ impl GpuFrameManager {
     /// Create a new frame manager with empty buffers
     pub fn new() -> Self {
         let num_entities = NUM_ENTITIES as usize;
-        let adjacency_size = ADJACENCY_MATRIX_SIZE as usize;
+        // Packed adjacency: NUM_PAIRS bits packed into u32 words
+        let num_pairs = crate::NUM_PAIRS as usize;
+        let adjacency_size = (num_pairs + 31) / 32; // Ceiling division
 
         Self {
             current_frame: 0,

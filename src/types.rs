@@ -163,7 +163,7 @@ impl PartialOrd for ConquerTask {
 /// Positive values mean X is pushing into Y, negative means Y is pushing into X
 #[derive(Resource)]
 pub struct ActiveExpansions {
-    pub fronts: [i32; NUM_PAIRS as usize],
+    pub fronts: Vec<i32>,
     /// Priority queues for each border expansion
     pub conquer_queues: HashMap<(PlayerId, PlayerId), BinaryHeap<ConquerTask>>,
 }
@@ -171,7 +171,7 @@ pub struct ActiveExpansions {
 impl Default for ActiveExpansions {
     fn default() -> Self {
         Self {
-            fronts: [0; NUM_PAIRS as usize],
+            fronts: vec![0; NUM_PAIRS as usize],
             conquer_queues: HashMap::new(),
         }
     }

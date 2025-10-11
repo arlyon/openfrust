@@ -3,7 +3,7 @@ use bevy_app_compute::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
 use crate::types::Board;
-use crate::{ADJACENCY_MATRIX_SIZE, BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE, NUM_ENTITIES};
+use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE, NUM_ENTITIES, NUM_PAIRS};
 
 /// Simulation parameters sent to the GPU as a uniform buffer
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy, Debug)]
@@ -113,9 +113,9 @@ impl ComputeWorker for ExpansionWorker {
         // Calculate dispatch size for the clear pass
         // We need to clear multiple buffers. We'll dispatch enough threads to cover the largest one.
         // The shader has `if` guards to prevent out-of-bounds writes.
-        let conquest_len = ADJACENCY_MATRIX_SIZE as u32;
-        let stats_len = (NUM_ENTITIES as u32) * 5; // 5 separate u32 buffers per player (tile_count + 4 sum components)
-        let adjacency_len = ADJACENCY_MATRIX_SIZE as u32;
+        let conquest_len = NUM_PAIRS; // Packed: one per player pair
+        let stats_len = (NUM_ENTITIES as u32) * 5; // 5 separate u32 buffers per player
+        let adjacency_len = (NUM_PAIRS + 31) / 32; // Packed adjacency: NUM_PAIRS bits in u32 words
         let max_len = conquest_len.max(stats_len).max(adjacency_len);
         let clear_dispatch_x = div_ceil(max_len, 256); // 256 is workgroup_size in clear_buffers.wgsl
 
@@ -131,16 +131,15 @@ impl ComputeWorker for ExpansionWorker {
                     num_entities: u32::from(NUM_ENTITIES),
                 },
             )
-            // Direct lookup table: front_lookup[attacker * NUM_ENTITIES + defender] = tiles_to_conquer
-            .add_storage("front_lookup", &vec![0u32; ADJACENCY_MATRIX_SIZE as usize])
-            // Atomic counters using same indexing as front_lookup
-            .add_rw_storage(
-                "conquest_counters",
-                &vec![0u32; ADJACENCY_MATRIX_SIZE as usize],
-            )
+            // Packed front lookup: NUM_PAIRS entries with signed i32 values
+            .add_storage("front_lookup", &vec![0i32; NUM_PAIRS as usize])
+            // Atomic counters: NUM_PAIRS entries (one per player pair)
+            .add_rw_storage("conquest_counters", &vec![0u32; NUM_PAIRS as usize])
             // Ping-pong buffers for board state with staging for swap support
             .add_rw_storage("board_in", &initial_board_data)
             .add_rw_storage("board_out", &initial_board_data)
+            // Create a read-write storage asset for rendering (synced from board_out via copy pass)
+            .add_rw_storage_asset("board_render", &initial_board_data)
             // Separate buffers for per-player statistics (for workgroup reduction optimization)
             .add_storage("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])
             .add_staging("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])
@@ -152,15 +151,16 @@ impl ComputeWorker for ExpansionWorker {
             .add_staging("player_sum_y_low", &vec![0u32; NUM_ENTITIES as usize])
             .add_storage("player_sum_y_high", &vec![0u32; NUM_ENTITIES as usize])
             .add_staging("player_sum_y_high", &vec![0u32; NUM_ENTITIES as usize])
-            // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
-            .add_storage(
-                "adjacency_matrix",
-                &vec![0u32; ADJACENCY_MATRIX_SIZE as usize],
-            )
-            .add_staging(
-                "adjacency_matrix",
-                &vec![0u32; ADJACENCY_MATRIX_SIZE as usize],
-            )
+            // Adjacency matrix: bit-packed for memory efficiency
+            // NUM_PAIRS bits packed into u32 words (32 bits per word)
+            .add_storage("adjacency_matrix", &{
+                let num_words = ((NUM_PAIRS + 31) / 32) as usize; // Ceiling division
+                vec![0u32; num_words]
+            })
+            .add_staging("adjacency_matrix", &{
+                let num_words = ((NUM_PAIRS + 31) / 32) as usize; // Ceiling division
+                vec![0u32; num_words]
+            })
             // --- CLEAR PASS: Must run first to ensure buffers are zeroed before use ---
             // This prevents CPU-GPU race conditions by making buffer clearing part of the GPU pipeline
             .add_pass::<ClearBuffersShader>(
