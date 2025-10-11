@@ -4,6 +4,8 @@
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
+use bevy::render::RenderPlugin;
+use bevy::render::settings::{RenderCreation, WgpuFeatures, WgpuSettings};
 use bevy::sprite_render::Material2dPlugin;
 use bevy::window::WindowResolution;
 use bevy_app_compute::prelude::*;
@@ -29,6 +31,14 @@ fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins
+                .set(RenderPlugin {
+                    render_creation: RenderCreation::from(WgpuSettings {
+                        // Request the feature needed for wgpu-profiler
+                        features: WgpuFeatures::TIMESTAMP_QUERY,
+                        ..Default::default()
+                    }),
+                    ..default()
+                })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "OpenFrust - Bevy Edition (GPU)".to_string(),

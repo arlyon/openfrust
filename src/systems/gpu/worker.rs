@@ -185,6 +185,7 @@ impl ComputeWorker for ExpansionWorker {
                 &["conquest_counters", "player_stats", "adjacency_matrix"],
                 &[], // No storage asset buffers
             )
+            .with_label("clear_buffers".into())
             // Define the expansion compute pass
             // Each thread processes 2 tiles (one packed u32)
             .add_pass::<ExpansionShader>(
@@ -198,6 +199,7 @@ impl ComputeWorker for ExpansionWorker {
                 ],
                 &[], // No storage asset buffers
             )
+            .with_label("expansion".into())
             // Automatically swap board_in and board_out after expansion
             .add_swap("board_in", "board_out")
             // Process results pass: calculate player stats (no diffing)
@@ -206,12 +208,14 @@ impl ComputeWorker for ExpansionWorker {
                 &["params", "board_out", "player_stats"],
                 &[], // No storage asset buffers
             )
+            .with_label("process_results".into())
             // Border adjacency pass: determine which players border each other
             .add_pass::<BorderAdjacencyShader>(
                 [standard_dispatch_x, standard_dispatch_y, 1],
                 &["params", "board_out", "adjacency_matrix"],
                 &[], // No storage asset buffers
             )
+            .with_label("adjacency".into())
             // Copy board_out to board_render for rendering (GPU-to-GPU)
             // Data is packed, so uses same dispatch as expansion
             .add_pass::<CopyBoardShader>(
@@ -219,6 +223,7 @@ impl ComputeWorker for ExpansionWorker {
                 &["params", "board_out"],
                 &["board_render"],
             )
+            .with_label("copy_board".into())
             .build()
     }
 }
