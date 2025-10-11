@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bytemuck::Zeroable;
 
 use super::GpuPlayerStats;
 use crate::NUM_ENTITIES;
@@ -16,9 +15,12 @@ pub struct GpuFrameManager {
     pub current_frame: usize,
 
     /// Double-buffered CPU-side copies of GPU readback results
-    /// player_stats_buffers[0] holds results from frame 0
-    /// player_stats_buffers[1] holds results from frame 1
-    pub player_stats_buffers: [Vec<GpuPlayerStats>; 2],
+    /// Separate buffers for each statistic (optimized for workgroup reduction)
+    pub tile_counts_buffers: [Vec<u32>; 2],
+    pub sum_x_low_buffers: [Vec<u32>; 2],
+    pub sum_x_high_buffers: [Vec<u32>; 2],
+    pub sum_y_low_buffers: [Vec<u32>; 2],
+    pub sum_y_high_buffers: [Vec<u32>; 2],
 
     /// Double-buffered adjacency matrix results
     /// adjacency_buffers[0] holds results from frame 0
@@ -37,14 +39,12 @@ impl GpuFrameManager {
 
         Self {
             current_frame: 0,
-            player_stats_buffers: [
-                vec![GpuPlayerStats::zeroed(); num_entities],
-                vec![GpuPlayerStats::zeroed(); num_entities],
-            ],
-            adjacency_buffers: [
-                vec![0u32; adjacency_size],
-                vec![0u32; adjacency_size],
-            ],
+            tile_counts_buffers: [vec![0u32; num_entities], vec![0u32; num_entities]],
+            sum_x_low_buffers: [vec![0u32; num_entities], vec![0u32; num_entities]],
+            sum_x_high_buffers: [vec![0u32; num_entities], vec![0u32; num_entities]],
+            sum_y_low_buffers: [vec![0u32; num_entities], vec![0u32; num_entities]],
+            sum_y_high_buffers: [vec![0u32; num_entities], vec![0u32; num_entities]],
+            adjacency_buffers: [vec![0u32; adjacency_size], vec![0u32; adjacency_size]],
             frames_dispatched: 0,
         }
     }
@@ -61,8 +61,22 @@ impl GpuFrameManager {
     }
 
     /// Get the player stats from the readable frame (N-1 results)
-    pub fn get_readable_stats(&self) -> &[GpuPlayerStats] {
-        &self.player_stats_buffers[self.read_frame()]
+    /// Returns reconstructed GpuPlayerStats from separate buffers
+    pub fn get_readable_stats(&self) -> Vec<GpuPlayerStats> {
+        let frame = self.read_frame();
+        let num_entities = NUM_ENTITIES as usize;
+
+        let mut stats = Vec::with_capacity(num_entities);
+        for i in 0..num_entities {
+            stats.push(GpuPlayerStats {
+                tile_count: self.tile_counts_buffers[frame][i],
+                sum_x_low: self.sum_x_low_buffers[frame][i],
+                sum_x_high: self.sum_x_high_buffers[frame][i],
+                sum_y_low: self.sum_y_low_buffers[frame][i],
+                sum_y_high: self.sum_y_high_buffers[frame][i],
+            });
+        }
+        stats
     }
 
     /// Get the adjacency matrix from the readable frame (N-1 results)

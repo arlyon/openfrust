@@ -125,10 +125,10 @@ impl ComputeWorker for ExpansionWorker {
         let copy_dispatch_y = expansion_dispatch_y;
 
         // Calculate dispatch size for the clear pass
-        // We need to clear three buffers of different sizes. We'll dispatch enough threads
-        // to cover the largest one. The shader has `if` guards to prevent out-of-bounds writes.
+        // We need to clear multiple buffers. We'll dispatch enough threads to cover the largest one.
+        // The shader has `if` guards to prevent out-of-bounds writes.
         let conquest_len = (NUM_ENTITIES * NUM_ENTITIES) as u32;
-        let stats_len = (NUM_ENTITIES as u32) * 6; // 6 u32s per GpuPlayerStats
+        let stats_len = (NUM_ENTITIES as u32) * 5; // 5 separate u32 buffers per player (tile_count + 4 sum components)
         let adjacency_len = (NUM_ENTITIES * NUM_ENTITIES) as u32;
         let max_len = conquest_len.max(stats_len).max(adjacency_len);
         let clear_dispatch_x = div_ceil(max_len, 256); // 256 is workgroup_size in clear_buffers.wgsl
@@ -160,15 +160,17 @@ impl ComputeWorker for ExpansionWorker {
             .add_rw_storage("board_out", &initial_board_data)
             // Create a read-write storage asset for rendering (synced from board_out via copy pass)
             .add_rw_storage_asset("board_render", &initial_board_data)
-            // Buffer for per-player statistics
-            .add_storage(
-                "player_stats",
-                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
-            )
-            .add_staging(
-                "player_stats",
-                &vec![GpuPlayerStats::zeroed(); NUM_ENTITIES as usize],
-            )
+            // Separate buffers for per-player statistics (for workgroup reduction optimization)
+            .add_storage("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])
+            .add_staging("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])
+            .add_storage("player_sum_x_low", &vec![0u32; NUM_ENTITIES as usize])
+            .add_staging("player_sum_x_low", &vec![0u32; NUM_ENTITIES as usize])
+            .add_storage("player_sum_x_high", &vec![0u32; NUM_ENTITIES as usize])
+            .add_staging("player_sum_x_high", &vec![0u32; NUM_ENTITIES as usize])
+            .add_storage("player_sum_y_low", &vec![0u32; NUM_ENTITIES as usize])
+            .add_staging("player_sum_y_low", &vec![0u32; NUM_ENTITIES as usize])
+            .add_storage("player_sum_y_high", &vec![0u32; NUM_ENTITIES as usize])
+            .add_staging("player_sum_y_high", &vec![0u32; NUM_ENTITIES as usize])
             // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
             .add_storage(
                 "adjacency_matrix",
@@ -182,7 +184,15 @@ impl ComputeWorker for ExpansionWorker {
             // This prevents CPU-GPU race conditions by making buffer clearing part of the GPU pipeline
             .add_pass::<ClearBuffersShader>(
                 [clear_dispatch_x, 1, 1],
-                &["conquest_counters", "player_stats", "adjacency_matrix"],
+                &[
+                    "conquest_counters",
+                    "player_tile_counts",
+                    "player_sum_x_low",
+                    "player_sum_x_high",
+                    "player_sum_y_low",
+                    "player_sum_y_high",
+                    "adjacency_matrix",
+                ],
                 &[], // No storage asset buffers
             )
             .with_label("clear_buffers".into())
@@ -202,10 +212,18 @@ impl ComputeWorker for ExpansionWorker {
             .with_label("expansion".into())
             // Automatically swap board_in and board_out after expansion
             .add_swap("board_in", "board_out")
-            // Process results pass: calculate player stats (no diffing)
+            // Process results pass: calculate player stats with workgroup reduction
             .add_pass::<ProcessResultsShader>(
                 [standard_dispatch_x, standard_dispatch_y, 1],
-                &["params", "board_out", "player_stats"],
+                &[
+                    "params",
+                    "board_out",
+                    "player_tile_counts",
+                    "player_sum_x_low",
+                    "player_sum_x_high",
+                    "player_sum_y_low",
+                    "player_sum_y_high",
+                ],
                 &[], // No storage asset buffers
             )
             .with_label("process_results".into())

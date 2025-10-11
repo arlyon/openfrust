@@ -58,7 +58,7 @@ fn main() {
             AppComputePlugin,
         ))
         .add_perf_ui_simple_entry::<systems::PerfUiEntryGpuTime>()
-        .insert_resource(Time::<Fixed>::from_hz(10.0))
+        .insert_resource(Time::<Fixed>::from_hz(1.0))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         // Initialize Board before worker plugin (worker needs it during build)
         .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))

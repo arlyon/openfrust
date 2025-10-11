@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::disconnected_fronts::clear_disconnected_fronts;
 use super::expansion_assignment::assign_and_log_expansions;
-use super::gpu::{ExpansionWorker, GpuFrameManager, GpuPlayerStats};
+use super::gpu::{ExpansionWorker, GpuFrameManager};
 use super::player_elimination::check_eliminations_and_update_troops;
 use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerId, PlayerInfoText};
 use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
@@ -89,9 +89,13 @@ pub fn gpu_orchestrator(
         let _span = tracing::info_span!("load_gpu_results").entered();
         let write_frame = frame_manager.write_frame();
 
-        // Store readback results in the write frame buffer
-        frame_manager.player_stats_buffers[write_frame] =
-            worker.read_vec::<GpuPlayerStats>("player_stats");
+        // Store readback results in the write frame buffer (separate buffers for workgroup reduction)
+        frame_manager.tile_counts_buffers[write_frame] =
+            worker.read_vec::<u32>("player_tile_counts");
+        frame_manager.sum_x_low_buffers[write_frame] = worker.read_vec::<u32>("player_sum_x_low");
+        frame_manager.sum_x_high_buffers[write_frame] = worker.read_vec::<u32>("player_sum_x_high");
+        frame_manager.sum_y_low_buffers[write_frame] = worker.read_vec::<u32>("player_sum_y_low");
+        frame_manager.sum_y_high_buffers[write_frame] = worker.read_vec::<u32>("player_sum_y_high");
         frame_manager.adjacency_buffers[write_frame] = worker.read_vec::<u32>("adjacency_matrix");
     }
 
