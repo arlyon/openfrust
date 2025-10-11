@@ -8,7 +8,7 @@ use super::expansion_assignment::assign_and_log_expansions;
 use super::gpu::{ExpansionWorker, GpuFrameManager};
 use super::player_elimination::check_eliminations_and_update_troops;
 use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerId, PlayerInfoText};
-use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES};
+use crate::{ADJACENCY_MATRIX_SIZE, EXPANSION_RATE_BASE, NUM_ENTITIES};
 
 /// Resource tracking GPU execution time in milliseconds
 #[derive(Resource)]
@@ -182,7 +182,7 @@ pub fn gpu_orchestrator(
 #[tracing::instrument(skip_all)]
 fn prepare_front_lookup(expansions: &ActiveExpansions) -> Vec<u32> {
     // Create flattened 2D array: [attacker][defender] -> tiles_to_conquer
-    let mut lookup = vec![0; (NUM_ENTITIES * NUM_ENTITIES) as usize];
+    let mut lookup = vec![0; ADJACENCY_MATRIX_SIZE as usize];
 
     // Iterate through all possible player pairs
     for a in 0..NUM_ENTITIES {

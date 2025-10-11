@@ -20,12 +20,13 @@ pub use types::*;
 
 // --- GAME CONSTANTS ---
 pub const BOARD_WIDTH: usize = 8192;
-pub const BOARD_HEIGHT: usize = 4096;
-pub const NUM_PLAYERS: u16 = 100; // limit is u11 - 1 ie 2047
+pub const BOARD_HEIGHT: usize = 8192;
+pub const NUM_PLAYERS: u16 = 2000; // limit is u11 - 1 ie 2047
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
 pub const NUM_ENTITIES: u16 = NUM_PLAYERS + 1;
-pub const NUM_PAIRS: u16 = (NUM_ENTITIES * (NUM_ENTITIES - 1)) / 2;
+pub const NUM_PAIRS: u32 = (NUM_ENTITIES as u32 * (NUM_ENTITIES as u32 - 1)) / 2;
+pub const ADJACENCY_MATRIX_SIZE: u32 = NUM_ENTITIES as u32 * NUM_ENTITIES as u32;
 
 fn main() {
     App::new()

@@ -3,7 +3,7 @@ use bevy_app_compute::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
 use crate::types::Board;
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE, NUM_ENTITIES};
+use crate::{ADJACENCY_MATRIX_SIZE, BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE, NUM_ENTITIES};
 
 /// Simulation parameters sent to the GPU as a uniform buffer
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy, Debug)]
@@ -66,16 +66,6 @@ impl ComputeShader for BorderAdjacencyShader {
     }
 }
 
-/// Shader definition for copying `board_out` to `board_render` for rendering
-#[derive(TypePath)]
-struct CopyBoardShader;
-
-impl ComputeShader for CopyBoardShader {
-    fn shader() -> ShaderRef {
-        "shaders/copy_board.wgsl".into()
-    }
-}
-
 /// Workgroup size configuration (must match WGSL @workgroup_size)
 const WORKGROUP_SIZE_X: u32 = 16;
 const WORKGROUP_SIZE_Y: u32 = 16;
@@ -120,16 +110,12 @@ impl ComputeWorker for ExpansionWorker {
         let standard_dispatch_x = div_ceil(BOARD_WIDTH as u32, WORKGROUP_SIZE_X);
         let standard_dispatch_y = div_ceil(BOARD_HEIGHT as u32, WORKGROUP_SIZE_Y);
 
-        // Copy board uses packed data, so same dispatch as expansion
-        let copy_dispatch_x = expansion_dispatch_x;
-        let copy_dispatch_y = expansion_dispatch_y;
-
         // Calculate dispatch size for the clear pass
         // We need to clear multiple buffers. We'll dispatch enough threads to cover the largest one.
         // The shader has `if` guards to prevent out-of-bounds writes.
-        let conquest_len = (NUM_ENTITIES * NUM_ENTITIES) as u32;
+        let conquest_len = ADJACENCY_MATRIX_SIZE as u32;
         let stats_len = (NUM_ENTITIES as u32) * 5; // 5 separate u32 buffers per player (tile_count + 4 sum components)
-        let adjacency_len = (NUM_ENTITIES * NUM_ENTITIES) as u32;
+        let adjacency_len = ADJACENCY_MATRIX_SIZE as u32;
         let max_len = conquest_len.max(stats_len).max(adjacency_len);
         let clear_dispatch_x = div_ceil(max_len, 256); // 256 is workgroup_size in clear_buffers.wgsl
 
@@ -146,20 +132,15 @@ impl ComputeWorker for ExpansionWorker {
                 },
             )
             // Direct lookup table: front_lookup[attacker * NUM_ENTITIES + defender] = tiles_to_conquer
-            .add_storage(
-                "front_lookup",
-                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
-            )
+            .add_storage("front_lookup", &vec![0u32; ADJACENCY_MATRIX_SIZE as usize])
             // Atomic counters using same indexing as front_lookup
             .add_rw_storage(
                 "conquest_counters",
-                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
+                &vec![0u32; ADJACENCY_MATRIX_SIZE as usize],
             )
             // Ping-pong buffers for board state with staging for swap support
-            .add_storage("board_in", &initial_board_data)
+            .add_rw_storage("board_in", &initial_board_data)
             .add_rw_storage("board_out", &initial_board_data)
-            // Create a read-write storage asset for rendering (synced from board_out via copy pass)
-            .add_rw_storage_asset("board_render", &initial_board_data)
             // Separate buffers for per-player statistics (for workgroup reduction optimization)
             .add_storage("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])
             .add_staging("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])
@@ -174,11 +155,11 @@ impl ComputeWorker for ExpansionWorker {
             // Adjacency matrix: [player_a * NUM_ENTITIES + player_b] = 1 if adjacent, 0 otherwise
             .add_storage(
                 "adjacency_matrix",
-                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
+                &vec![0u32; ADJACENCY_MATRIX_SIZE as usize],
             )
             .add_staging(
                 "adjacency_matrix",
-                &vec![0u32; (NUM_ENTITIES * NUM_ENTITIES) as usize],
+                &vec![0u32; ADJACENCY_MATRIX_SIZE as usize],
             )
             // --- CLEAR PASS: Must run first to ensure buffers are zeroed before use ---
             // This prevents CPU-GPU race conditions by making buffer clearing part of the GPU pipeline
@@ -236,12 +217,10 @@ impl ComputeWorker for ExpansionWorker {
             .with_label("adjacency".into())
             // Copy board_out to board_render for rendering (GPU-to-GPU)
             // Data is packed, so uses same dispatch as expansion
-            .add_pass::<CopyBoardShader>(
-                [copy_dispatch_x, copy_dispatch_y, 1],
-                &["params", "board_out"],
-                &["board_render"],
+            .add_copy(
+                BufferSource::Worker("board_out"),
+                BufferSource::StorageAsset("board_render"),
             )
-            .with_label("copy_board".into())
             .build()
     }
 }
