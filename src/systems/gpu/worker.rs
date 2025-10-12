@@ -93,12 +93,8 @@ impl ComputeWorker for ExpansionWorker {
     fn build(world: &mut World) -> AppComputeWorker<Self> {
         // Get map dimensions from the GameMap resource
         let map = world.resource::<GameMap>();
-        let board_width = map.width() as usize;
-        let board_height = map.height() as usize;
-
-        // Pack two Tile(u16) values into each u32 for better memory efficiency
-        // Each u32 contains: [tile2 (upper 16 bits) | tile1 (lower 16 bits)]
-        let initial_board_data: Vec<u32> = vec![0; (board_width * board_height) / 2];
+        let board_width = map.width();
+        let board_height = map.height();
 
         // Pack map terrain data: 4 MapTile (u8) values per u32
         let terrain_data = map.terrain();
@@ -110,6 +106,9 @@ impl ComputeWorker for ExpansionWorker {
             }
             packed_terrain.push(packed);
         }
+
+        let board_size_in_bytes =
+            (board_width as u64 * board_height as u64) * std::mem::size_of::<u16>() as u64;
 
         // Calculate dispatch sizes dynamically based on workgroup configuration
         let expansion_dispatch_x = div_ceil(
@@ -147,10 +146,10 @@ impl ComputeWorker for ExpansionWorker {
             // Atomic counters: NUM_PAIRS entries (one per player pair)
             .add_rw_storage("conquest_counters", &vec![0u32; NUM_PAIRS as usize])
             // Ping-pong buffers for board state with staging for swap support
-            .add_rw_storage("board_in", &initial_board_data)
-            .add_rw_storage("board_out", &initial_board_data)
+            .add_empty_rw_storage("board_in", board_size_in_bytes)
+            .add_empty_rw_storage("board_out", board_size_in_bytes)
             // Create a read-write storage asset for rendering (synced from board_out via copy pass)
-            .add_rw_storage_asset("board_render", &initial_board_data)
+            .add_empty_rw_storage_asset("board_render", board_size_in_bytes)
             // Map terrain data - immutable, packed 4 u8 MapTiles per u32
             // Initialized with actual map data during worker build
             .add_storage_asset("map_terrain", &packed_terrain)
