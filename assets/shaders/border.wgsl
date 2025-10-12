@@ -47,14 +47,18 @@ fn get_terrain_color(tile: u32) -> vec4<f32> {
     if (is_land(tile)) {
         let mag = get_magnitude(tile);
         if (mag < 10u) {
-            // Plains - light green
-            return vec4<f32>(0.6, 0.8, 0.4, 1.0);
+            // Plains - light green, subtle brightness variation
+            let brightness = 1.0 + (f32(mag) / 10.0) * 0.1;
+            return vec4<f32>(0.6, 0.8, 0.4, 1.0) * brightness;
         } else if (mag < 20u) {
-            // Highland - tan/brown
-            return vec4<f32>(0.7, 0.6, 0.4, 1.0);
+            // Highland - tan/brown, moderate brightness variation
+            let brightness = 1.0 + (f32(mag - 10u) / 10.0) * 0.15;
+            return vec4<f32>(0.7, 0.6, 0.4, 1.0) * brightness;
         } else {
-            // Mountain - gray
-            return vec4<f32>(0.5, 0.5, 0.5, 1.0);
+            // Mountain - gray to white, strong brightness variation
+            // Higher mountains get brighter (mag 20-31 maps to brightness 1.0-1.5)
+            let brightness = 1.0 + (f32(mag - 20u) / 11.0) * 0.5;
+            return vec4<f32>(0.5, 0.5, 0.5, 1.0) * brightness;
         }
     } else if (is_ocean(tile)) {
         // Ocean - dark blue
