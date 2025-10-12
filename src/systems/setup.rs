@@ -132,5 +132,7 @@ pub fn setup(
     // 4. Write the final packed data to the GPU's `board_in` buffer.
     // This synchronizes the initial state before the first simulation tick.
     bevy::log::info!("Seeding GPU board with initial player positions...");
-    worker.write_slice("board_in", &packed_board);
+    if let Err(e) = worker.try_write_slice("board_in", &packed_board) {
+        bevy::log::error!("Failed to write initial board data to GPU: {:?}", e);
+    }
 }

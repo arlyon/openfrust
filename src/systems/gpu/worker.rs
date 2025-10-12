@@ -109,6 +109,7 @@ impl ComputeWorker for ExpansionWorker {
             // Atomic counters: NUM_PAIRS entries (one per player pair)
             .add_rw_storage("conquest_counters", &vec![0u32; NUM_PAIRS as usize])
             // Ping-pong buffers for board state with staging for swap support
+            // These are created as storage assets so they can be shared with PlayerIdWorker
             .add_empty_rw_storage("board_in", board_size_in_bytes)
             .add_empty_rw_storage("board_out", board_size_in_bytes)
             // Create a read-write storage asset for rendering (synced from board_out via copy pass)
@@ -191,14 +192,56 @@ impl ComputeWorker for ExpansionWorker {
                 &[], // No storage asset buffers
             )
             .with_label("adjacency".into())
-            // Copy board_out to board_render for rendering (GPU-to-GPU)
-            // Data is packed, so uses same dispatch as expansion
+            // Copy board_in (which has now been swapped) to board_render for rendering (GPU-to-GPU)
             .add_copy(
-                BufferSource::Worker("board_out"),
+                BufferSource::Worker("board_in"),
                 BufferSource::StorageAsset("board_render"),
             )
-            // TODO: do we copy board_out to board_in here?
             // Configure worker to run only when explicitly executed
+            .one_shot()
+            .build()
+    }
+}
+
+/// Compute worker for querying player ID at a specific coordinate
+#[derive(Resource)]
+pub struct PlayerIdWorker;
+
+impl ComputeWorker for PlayerIdWorker {
+    fn build(world: &mut World) -> AppComputeWorker<Self> {
+        // Get the main ExpansionWorker to access the shared board_in buffer
+        let expansion_worker = world.resource::<AppComputeWorker<ExpansionWorker>>();
+
+        // Get the handle to the shared board_in buffer
+        let board_handle = expansion_worker
+            .get_storage_buffer_asset_handle("board_render")
+            .expect("Failed to get handle for 'board_render' from ExpansionWorker")
+            .clone();
+
+        // Get map dimensions
+        let map = world.resource::<GameMap>();
+        let board_width = map.width() as u32;
+        let board_height = map.height() as u32;
+
+        // Build the worker with shared buffer access
+        AppComputeWorkerBuilder::new(world)
+            // Board dimensions uniform
+            .add_uniform("board_dims", &UVec2::new(board_width, board_height))
+            // Target coordinate to query (will be updated by system)
+            .add_uniform("target_coord", &UVec2::ZERO)
+            // Shared board buffer (read-only for this worker)
+            .add_storage_asset_by_handle("board_data", board_handle)
+            // Result buffer
+            .add_rw_storage("result_id", &[0xFFFFFFFFu32; 1])
+            .add_staging("result_id", &[0xFFFFFFFFu32; 1])
+            // Define the compute pass
+            .add_pass::<crate::shaders::GetPlayerIdShader>(
+                [1, 1, 1], // Single thread for a single lookup
+                &["board_dims", "target_coord", "result_id"],
+                &["board_data"],
+            )
+            .with_label("get_player_id".into())
+            // One-shot mode: only runs when explicitly executed
             .one_shot()
             .build()
     }

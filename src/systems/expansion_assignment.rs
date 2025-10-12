@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use bevy::tasks::{ComputeTaskPool, ParallelSlice};
 use std::sync::Mutex;
 
+use crate::NUM_ENTITIES;
 use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerId};
-use crate::{NO_OWNER, NUM_ENTITIES};
 
 /// AI assigns troops to expansion fronts and logs active fronts
 #[tracing::instrument(skip_all)]
@@ -37,44 +37,8 @@ pub fn assign_and_log_expansions(
         for (attacker, defender, troops) in assignments.into_inner().unwrap() {
             expansions.add_troops(attacker, defender, troops);
         }
-    }
 
-    // Log active expansion fronts
-    {
-        let has_active_fronts = expansions.front_lookup.iter().any(|&troops| troops != 0);
-        if has_active_fronts {
-            bevy::log::debug!("Active expansion fronts:");
-            for a in 0..crate::NUM_ENTITIES {
-                for b in (a + 1)..crate::NUM_ENTITIES {
-                    let a = PlayerId::new_unchecked(a);
-                    let b = PlayerId::new_unchecked(b);
-                    let net_troops = expansions.get_net_troops(a, b);
-                    if net_troops != 0 {
-                        let (attacker, defender, troops) = if net_troops > 0 {
-                            (a, b, net_troops)
-                        } else {
-                            (b, a, -net_troops)
-                        };
-                        let defender_name = if defender == NO_OWNER {
-                            "Empty".to_string()
-                        } else {
-                            format!("Player {defender}")
-                        };
-                        let attacker_name = if attacker == NO_OWNER {
-                            "Empty".to_string()
-                        } else {
-                            format!("Player {attacker}")
-                        };
-                        bevy::log::debug!(
-                            "  {} -> {}: {} troops",
-                            attacker_name,
-                            defender_name,
-                            troops
-                        );
-                    }
-                }
-            }
-        }
+        tracing::debug!("{}", expansions.print());
     }
 }
 

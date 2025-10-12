@@ -125,7 +125,7 @@ impl SimManager {
         worker: &mut AppComputeWorker<ExpansionWorker>,
         time: &Time,
     ) {
-        tracing::info!(
+        tracing::trace!(
             "executing gpu workload {:?} {:?}",
             worker.state,
             worker.run_mode

@@ -23,7 +23,7 @@ pub use types::*;
 use crate::systems::{ExpansionWorker, SimManager};
 
 // --- GAME CONSTANTS ---
-pub const NUM_PLAYERS: u16 = 10; // limit is u11 - 1 ie 2047
+pub const NUM_PLAYERS: u16 = 100; // limit is u11 - 1 ie 2047
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
 pub const NUM_ENTITIES: u16 = NUM_PLAYERS + 1;
@@ -68,17 +68,36 @@ fn main() {
         // Initialize SimManager (owns frame manager and timing)
         .insert_resource(systems::SimManager::default())
         .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())
+        .add_plugins(AppComputeWorkerPlugin::<systems::PlayerIdWorker>::default())
+        // Initialize cursor query resources
+        .init_resource::<systems::CursorIDQuery>()
+        .init_resource::<systems::CursorIDResult>()
         .add_systems(
             Startup,
             (
                 systems::setup,
                 systems::setup_map_texture,
                 systems::setup_gpu_perf_ui,
+                systems::setup_player_info_panel,
             )
                 .chain(),
         )
         .add_systems(FixedUpdate, sim)
-        .add_systems(Update, (systems::update_player_info, systems::gpu_read))
+        .add_systems(
+            Update,
+            (
+                systems::update_player_info,
+                systems::gpu_read,
+                // Cursor query systems - run in order
+                (
+                    systems::update_cursor_query,
+                    systems::dispatch_id_query,
+                    systems::process_id_query_result,
+                    systems::update_player_info_panel,
+                )
+                    .chain(),
+            ),
+        )
         .run();
 }
 
