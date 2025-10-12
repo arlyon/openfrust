@@ -106,13 +106,13 @@ pub struct PlayerInfoText {
 /// Positive values mean X is pushing into Y, negative means Y is pushing into X
 #[derive(Resource)]
 pub struct ActiveExpansions {
-    pub fronts: Vec<i32>,
+    pub front_lookup: Vec<i32>,
 }
 
 impl Default for ActiveExpansions {
     fn default() -> Self {
         Self {
-            fronts: vec![0; NUM_PAIRS as usize],
+            front_lookup: vec![0i32; NUM_PAIRS as usize],
         }
     }
 }
@@ -129,23 +129,23 @@ impl ActiveExpansions {
     pub fn add_troops(&mut self, attacker: PlayerId, defender: PlayerId, troops: i32) {
         let idx = Self::pair_index(attacker, defender);
         let multiplier = if attacker < defender { 1 } else { -1 };
-        self.fronts[idx] += troops * multiplier;
+        self.front_lookup[idx] += troops * multiplier;
     }
 
     /// Get net troops for a border. If positive, a has troops attacking b, otherwise b has troops attacking a
     pub fn get_net_troops(&self, a: PlayerId, b: PlayerId) -> i32 {
         let idx = Self::pair_index(a, b);
         if a < b {
-            self.fronts[idx]
+            self.front_lookup[idx]
         } else {
-            -self.fronts[idx]
+            -self.front_lookup[idx]
         }
     }
 
     /// Clear a specific border
     pub fn clear_border(&mut self, a: PlayerId, b: PlayerId) {
         let idx = Self::pair_index(a, b);
-        self.fronts[idx] = 0;
+        self.front_lookup[idx] = 0;
     }
 
     /// Remove all borders involving a specific player
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn test_get_net_troops_basic() {
         let mut expansions = ActiveExpansions {
-            fronts: vec![0; NUM_PAIRS as usize],
+            front_lookup: vec![0; NUM_PAIRS as usize],
         };
         let a = PlayerId::new_unchecked(1);
         let b = PlayerId::new_unchecked(2);
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn test_get_net_troops_symmetry() {
         let mut expansions = ActiveExpansions {
-            fronts: vec![0; NUM_PAIRS as usize],
+            front_lookup: vec![0; NUM_PAIRS as usize],
         };
         let a = PlayerId::new_unchecked(5);
         let b = PlayerId::new_unchecked(3);
@@ -224,7 +224,7 @@ mod tests {
     #[test]
     fn test_get_net_troops_multiple_pairs() {
         let mut expansions = ActiveExpansions {
-            fronts: vec![0; NUM_PAIRS as usize],
+            front_lookup: vec![0; NUM_PAIRS as usize],
         };
         let a = PlayerId::new_unchecked(0);
         let b = PlayerId::new_unchecked(1);

@@ -41,7 +41,7 @@ pub fn assign_and_log_expansions(
 
     // Log active expansion fronts
     {
-        let has_active_fronts = expansions.fronts.iter().any(|&troops| troops != 0);
+        let has_active_fronts = expansions.front_lookup.iter().any(|&troops| troops != 0);
         if has_active_fronts {
             bevy::log::debug!("Active expansion fronts:");
             for a in 0..crate::NUM_ENTITIES {

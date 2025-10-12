@@ -12,12 +12,15 @@ use bevy_app_compute::prelude::*;
 use bevy_pancam::PanCamPlugin;
 
 pub mod map;
+mod shaders;
 mod systems;
 mod types;
 
 use iyes_perf_ui::{PerfUiAppExt, PerfUiPlugin};
 // Re-export types for convenience
 pub use types::*;
+
+use crate::systems::{ExpansionWorker, SimManager};
 
 // --- GAME CONSTANTS ---
 pub const NUM_PLAYERS: u16 = 10; // limit is u11 - 1 ie 2047
@@ -71,10 +74,32 @@ fn main() {
                 systems::setup,
                 systems::setup_map_texture,
                 systems::setup_gpu_perf_ui,
+                systems::seed_gpu_board,
             )
                 .chain(),
         )
-        .add_systems(FixedUpdate, systems::gpu_orchestrator)
-        .add_systems(Update, systems::update_player_info)
+        .add_systems(FixedUpdate, sim)
+        .add_systems(Update, (systems::update_player_info, systems::gpu_read))
         .run();
+}
+
+fn sim(
+    mut sim_manager: ResMut<SimManager>,
+    mut worker: ResMut<AppComputeWorker<ExpansionWorker>>,
+    mut players: Query<(Entity, &mut PlayerData), With<Alive>>,
+    mut expansions: ResMut<ActiveExpansions>,
+    mut commands: Commands,
+    text_query: Query<(Entity, &PlayerInfoText)>,
+    player_map: Res<PlayerEntityMap>,
+    time: Res<Time>,
+) {
+    sim_manager.tick(
+        &mut players,
+        &mut expansions,
+        &mut commands,
+        &mut worker,
+        &text_query,
+        &player_map,
+        &time,
+    );
 }
