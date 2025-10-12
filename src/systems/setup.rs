@@ -3,7 +3,8 @@ use bevy_pancam::PanCam;
 use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use rand::Rng;
 
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, NUM_PLAYERS};
+use crate::map::GameMap;
+use crate::NUM_PLAYERS;
 use crate::{
     NUM_ENTITIES,
     types::{
@@ -17,7 +18,10 @@ const WILDERNESS_COLOR: Color = Color::srgb(0.74, 0.8, 0.53);
 /// Startup system to initialize the game, creating the camera, players,
 /// and expansions.
 #[tracing::instrument(skip_all)]
-pub fn setup(mut commands: Commands) {
+pub fn setup(mut commands: Commands, map: Res<GameMap>) {
+    let board_width = map.width() as f32;
+    let board_height = map.height() as f32;
+
     // Spawn camera with PanCam controls
     commands.spawn((
         Camera2d,
@@ -25,10 +29,10 @@ pub fn setup(mut commands: Commands) {
             min_scale: 1.0 / 16.0,
             max_scale: 2.0,
             speed: 2.0,
-            max_x: (BOARD_WIDTH as f32) / 2.0 + 100.0,
-            max_y: (BOARD_HEIGHT as f32) / 2.0 + 100.0,
-            min_x: -(BOARD_WIDTH as f32) / 2.0 - 100.0,
-            min_y: -(BOARD_HEIGHT as f32) / 2.0 - 100.0,
+            max_x: board_width / 2.0 + 100.0,
+            max_y: board_height / 2.0 + 100.0,
+            min_x: -board_width / 2.0 - 100.0,
+            min_y: -board_height / 2.0 - 100.0,
             ..Default::default()
         },
     ));
@@ -53,8 +57,8 @@ pub fn setup(mut commands: Commands) {
 
         // Find starting position first
         let (start_x, start_y) = loop {
-            let x = rng.random_range(10..BOARD_WIDTH - 10);
-            let y = rng.random_range(5..BOARD_HEIGHT - 5);
+            let x = rng.random_range(10..board_width as usize - 10);
+            let y = rng.random_range(5..board_height as usize - 5);
             break (x, y);
         };
 

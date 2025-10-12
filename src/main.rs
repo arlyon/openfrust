@@ -62,6 +62,8 @@ fn main() {
         .add_perf_ui_simple_entry::<systems::PerfUiEntryGpuTime>()
         .insert_resource(Time::<Fixed>::from_hz(10.0))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
+        // Load the game map BEFORE initializing the GPU worker (which needs dimensions)
+        .insert_resource(map::GameMap::load("giantworldmap").expect("Failed to load map"))
         // Initialize SimManager (owns frame manager and timing)
         .insert_resource(systems::SimManager::default())
         .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())

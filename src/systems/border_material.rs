@@ -25,6 +25,10 @@ pub struct BorderMaterial {
     /// Array of player colors for looking up by owner ID
     #[storage(4, read_only)]
     pub player_colors: Handle<ShaderStorageBuffer>,
+
+    /// Map terrain data (packed u8 MapTiles, 4 per u32)
+    #[storage(5, read_only)]
+    pub map_terrain: Handle<ShaderStorageBuffer>,
 }
 
 impl Material2d for BorderMaterial {

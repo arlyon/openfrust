@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use bevy::prelude::Resource;
 use bitfield::bitfield;
 use serde::Deserialize;
 
@@ -102,6 +103,7 @@ struct MapManifest {
 }
 
 /// Represents a game map with immutable terrain data
+#[derive(Resource)]
 pub struct GameMap {
     name: String,
     width: u32,

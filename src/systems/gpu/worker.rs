@@ -8,7 +8,8 @@ use bevy::prelude::*;
 use bevy_app_compute::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE, NUM_ENTITIES, NUM_PAIRS};
+use crate::map::GameMap;
+use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES, NUM_PAIRS};
 
 /// Simulation parameters sent to the GPU as a uniform buffer
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy, Debug)]
@@ -90,19 +91,35 @@ pub struct ExpansionWorker;
 
 impl ComputeWorker for ExpansionWorker {
     fn build(world: &mut World) -> AppComputeWorker<Self> {
+        // Get map dimensions from the GameMap resource
+        let map = world.resource::<GameMap>();
+        let board_width = map.width() as usize;
+        let board_height = map.height() as usize;
+
         // Pack two Tile(u16) values into each u32 for better memory efficiency
         // Each u32 contains: [tile2 (upper 16 bits) | tile1 (lower 16 bits)]
-        let initial_board_data: Vec<u32> = vec![0; (BOARD_WIDTH * BOARD_HEIGHT) / 2 as usize];
+        let initial_board_data: Vec<u32> = vec![0; (board_width * board_height) / 2];
+
+        // Pack map terrain data: 4 MapTile (u8) values per u32
+        let terrain_data = map.terrain();
+        let mut packed_terrain: Vec<u32> = Vec::with_capacity(terrain_data.len() / 4);
+        for chunk in terrain_data.chunks(4) {
+            let mut packed = 0u32;
+            for (i, tile) in chunk.iter().enumerate() {
+                packed |= (tile.as_byte() as u32) << (i * 8);
+            }
+            packed_terrain.push(packed);
+        }
 
         // Calculate dispatch sizes dynamically based on workgroup configuration
         let expansion_dispatch_x = div_ceil(
-            BOARD_WIDTH as u32,
+            board_width as u32,
             WORKGROUP_SIZE_X * EXPANSION_TILES_PER_THREAD_X,
         );
-        let expansion_dispatch_y = div_ceil(BOARD_HEIGHT as u32, WORKGROUP_SIZE_Y);
+        let expansion_dispatch_y = div_ceil(board_height as u32, WORKGROUP_SIZE_Y);
 
-        let standard_dispatch_x = div_ceil(BOARD_WIDTH as u32, WORKGROUP_SIZE_X);
-        let standard_dispatch_y = div_ceil(BOARD_HEIGHT as u32, WORKGROUP_SIZE_Y);
+        let standard_dispatch_x = div_ceil(board_width as u32, WORKGROUP_SIZE_X);
+        let standard_dispatch_y = div_ceil(board_height as u32, WORKGROUP_SIZE_Y);
 
         // Calculate dispatch size for the clear pass
         // We need to clear multiple buffers. We'll dispatch enough threads to cover the largest one.
@@ -119,8 +136,8 @@ impl ComputeWorker for ExpansionWorker {
             .add_uniform(
                 "params",
                 &SimParams {
-                    board_width: BOARD_WIDTH as u32,
-                    board_height: BOARD_HEIGHT as u32,
+                    board_width: board_width as u32,
+                    board_height: board_height as u32,
                     expansion_rate: EXPANSION_RATE_BASE,
                     num_entities: u32::from(NUM_ENTITIES),
                 },
@@ -134,6 +151,9 @@ impl ComputeWorker for ExpansionWorker {
             .add_rw_storage("board_out", &initial_board_data)
             // Create a read-write storage asset for rendering (synced from board_out via copy pass)
             .add_rw_storage_asset("board_render", &initial_board_data)
+            // Map terrain data - immutable, packed 4 u8 MapTiles per u32
+            // Initialized with actual map data during worker build
+            .add_storage_asset("map_terrain", &packed_terrain)
             // Separate buffers for per-player statistics (for workgroup reduction optimization)
             .add_storage("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])
             .add_staging("player_tile_counts", &vec![0u32; NUM_ENTITIES as usize])

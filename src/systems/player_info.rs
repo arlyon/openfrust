@@ -1,13 +1,15 @@
 use bevy::prelude::*;
 
+use crate::map::GameMap;
 use crate::types::{LivingPlayerUpdate, PlayerData};
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
+use crate::TILE_SIZE;
 
 /// Update player info text with troop counts and position at territory center
 #[tracing::instrument(skip_all)]
 pub fn update_player_info(
     players: Query<(Entity, &PlayerData), LivingPlayerUpdate>,
     mut text_query: Query<(&crate::PlayerInfoText, &mut Text2d, &mut Transform)>,
+    map: Res<GameMap>,
 ) {
     if players.is_empty() {
         return;
@@ -26,8 +28,8 @@ pub fn update_player_info(
                 let center_x = player.sum_x as f32 / player.tile_count as f32;
                 let center_y = player.sum_y as f32 / player.tile_count as f32;
 
-                let pos_x = (center_x - BOARD_WIDTH as f32 / 2.0) * TILE_SIZE;
-                let pos_y = (BOARD_HEIGHT as f32 / 2.0 - center_y) * TILE_SIZE;
+                let pos_x = (center_x - map.width() as f32 / 2.0) * TILE_SIZE;
+                let pos_y = (map.height() as f32 / 2.0 - center_y) * TILE_SIZE;
 
                 transform.translation.x = pos_x;
                 transform.translation.y = pos_y;

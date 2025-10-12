@@ -7,7 +7,7 @@ use bevy_app_compute::prelude::*;
 use crate::map::GameMap;
 use crate::systems::{BorderMaterial, ExpansionWorker};
 use crate::types::PlayerColorMap;
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
+use crate::TILE_SIZE;
 
 const LABEL_INTERVAL: usize = 256; // Show coordinate every 256 pixels
 
@@ -19,13 +19,18 @@ pub fn setup_map_texture(
     mut materials: ResMut<Assets<BorderMaterial>>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
     player_colors: Res<PlayerColorMap>,
+    map: Res<GameMap>,
 ) {
-    let _map = GameMap::load("africa").expect("Failed to load Africa map");
-
     // Get the handle to the render buffer
     let board_handle = worker
         .get_storage_buffer_asset_handle("board_render")
         .expect("board_render storage buffer asset should exist")
+        .clone();
+
+    // Get the handle to the terrain buffer
+    let terrain_handle = worker
+        .get_storage_buffer_asset_handle("map_terrain")
+        .expect("map_terrain storage buffer asset should exist")
         .clone();
 
     // Create a storage buffer containing player colors
@@ -46,8 +51,8 @@ pub fn setup_map_texture(
 
     // Create a quad mesh that matches the map dimensions
     let mesh = meshes.add(Rectangle::new(
-        BOARD_WIDTH as f32 * TILE_SIZE,
-        BOARD_HEIGHT as f32 * TILE_SIZE,
+        map.width() as f32 * TILE_SIZE,
+        map.height() as f32 * TILE_SIZE,
     ));
 
     // Create the border material with the storage buffer handle
@@ -55,25 +60,28 @@ pub fn setup_map_texture(
         board_data: board_handle,
         border_color: LinearRgba::new(0.3, 0.3, 0.3, 1.0), // Darker borders
         border_thickness: 1.0,
-        texture_size: Vec2::new(BOARD_WIDTH as f32, BOARD_HEIGHT as f32),
+        texture_size: Vec2::new(map.width() as f32, map.height() as f32),
         player_colors: colors_buffer,
+        map_terrain: terrain_handle,
     });
 
     // Spawn the map using our custom material
     commands.spawn((Mesh2d(mesh), MeshMaterial2d(material_handle)));
 
     // Spawn coordinate labels along the borders
-    spawn_coordinate_labels(&mut commands);
+    spawn_coordinate_labels(&mut commands, &map);
 }
 
 /// Spawns text labels along the borders showing X and Y coordinates
-fn spawn_coordinate_labels(commands: &mut Commands) {
-    let half_width = (BOARD_WIDTH as f32 * TILE_SIZE) / 2.0;
-    let half_height = (BOARD_HEIGHT as f32 * TILE_SIZE) / 2.0;
+fn spawn_coordinate_labels(commands: &mut Commands, map: &GameMap) {
+    let board_width = map.width() as usize;
+    let board_height = map.height() as usize;
+    let half_width = (board_width as f32 * TILE_SIZE) / 2.0;
+    let half_height = (board_height as f32 * TILE_SIZE) / 2.0;
 
     // X-axis labels (top and bottom borders)
     let mut x = 0;
-    while x <= BOARD_WIDTH {
+    while x <= board_width {
         let x_pos = (x as f32 * TILE_SIZE) - half_width;
 
         // Top border
@@ -103,7 +111,7 @@ fn spawn_coordinate_labels(commands: &mut Commands) {
 
     // Y-axis labels (left and right borders)
     let mut y = 0;
-    while y <= BOARD_HEIGHT {
+    while y <= board_height {
         let y_pos = (y as f32 * TILE_SIZE) - half_height;
 
         // Left border
