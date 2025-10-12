@@ -12,6 +12,7 @@ struct SimParams {
 @group(0) @binding(2) var<storage, read_write> conquest_counters: array<atomic<u32>>; // Packed: NUM_PAIRS
 @group(0) @binding(3) var<storage, read> board_in: array<u32>;
 @group(0) @binding(4) var<storage, read_write> board_out: array<u32>;
+@group(0) @binding(5) var<storage, read> map_terrain: array<u32>;
 
 // Unpack a 16-bit tile from a u32 containing two tiles
 fn unpack_tile_data(linear_idx: u32) -> u32 {
@@ -74,8 +75,54 @@ fn get_pair_index(p1: u32, p2: u32) -> vec2<u32> {
     return vec2(index, needs_flip);
 }
 
+// --- MapTile Decoding ---
+// MapTile bitfield layout (u8):
+// Bit 7: is_land
+// Bit 6: is_shoreline
+// Bit 5: is_ocean
+// Bits 0-4: magnitude (0-31)
+
+fn get_map_tile_at(coord: vec2<i32>) -> u32 {
+    // Bounds check
+    if (coord.x < 0 || coord.x >= i32(params.board_width) || coord.y < 0 || coord.y >= i32(params.board_height)) {
+        return 0u; // Return a default (water, no magnitude) tile if out of bounds
+    }
+
+    // Calculate 1D index from 2D coordinates
+    let linear_index = u32(coord.y) * params.board_width + u32(coord.x);
+
+    // Unpack terrain data (4 u8 MapTiles per u32)
+    let packed_idx = linear_index / 4u;
+    let sub_idx = linear_index % 4u;
+    let packed_val = map_terrain[packed_idx];
+    let tile_byte = (packed_val >> (sub_idx * 8u)) & 0xFFu;
+
+    return tile_byte;
+}
+
+fn is_land(tile: u32) -> bool {
+    return (tile & 0x80u) != 0u; // Bit 7
+}
+
+fn is_ocean(tile: u32) -> bool {
+    return (tile & 0x20u) != 0u; // Bit 5
+}
+
+fn get_magnitude(tile: u32) -> u32 {
+    return tile & 0x1Fu; // Bits 0-4
+}
+// --- End MapTile Decoding ---
+
 // Process a single tile and return updated tile data
 fn process_tile(x: u32, y: u32, tile_data: u32) -> u32 {
+    // Get this tile's physical terrain data from the map
+    let map_tile = get_map_tile_at(vec2<i32>(i32(x), i32(y)));
+
+    // Oceans are impassable and cannot be conquered
+    if is_ocean(map_tile) {
+        return tile_data;
+    }
+
     let current_owner = get_owner(tile_data);
     var new_tile_data = tile_data;
 

@@ -166,7 +166,7 @@ impl SimManager {
                 player.tile_count = stats.tile_count as usize;
                 player.sum_x = (u64::from(stats.sum_x_high) << 32) | u64::from(stats.sum_x_low);
                 player.sum_y = (u64::from(stats.sum_y_high) << 32) | u64::from(stats.sum_y_low);
-                tracing::info!("Player {} stats: {:?}", player.id, player);
+                tracing::debug!("Player {} stats: {:?}", player.id, player);
             }
         }
 

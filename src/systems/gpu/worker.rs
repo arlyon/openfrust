@@ -164,7 +164,7 @@ impl ComputeWorker for ExpansionWorker {
                     "board_in",
                     "board_out",
                 ],
-                &[], // No storage asset buffers
+                &["map_terrain"], // Storage asset buffers
             )
             .with_label("expansion".into())
             // Automatically swap board_in and board_out after expansion
