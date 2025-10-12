@@ -125,6 +125,26 @@ impl ActiveExpansions {
         (NUM_ENTITIES * x - (x * (x + 1)) / 2 + y - x - 1) as usize
     }
 
+    pub fn index_pair(&self, idx: usize) -> (PlayerId, PlayerId) {
+        let n = NUM_ENTITIES as f64;
+        let idx_f = idx as f64;
+
+        // Derived from solving the quadratic equation for x
+        let x_f = (n - 0.5 - ((n - 0.5).powi(2) - 2.0 * idx_f).sqrt()).floor();
+        let x = x_f as u16;
+
+        let pairs_before_x = NUM_ENTITIES * x - (x * (x + 1)) / 2;
+        let y = (idx - pairs_before_x as usize) as u16 + x + 1;
+
+        let (x, y) = if self.front_lookup[idx] >= 0 {
+            (x, y)
+        } else {
+            (y, x)
+        };
+
+        (PlayerId::new_unchecked(x), PlayerId::new_unchecked(y))
+    }
+
     /// Add troops to a border, canceling out opposing forces
     pub fn add_troops(&mut self, attacker: PlayerId, defender: PlayerId, troops: i32) {
         let idx = Self::pair_index(attacker, defender);
@@ -157,6 +177,17 @@ impl ActiveExpansions {
             }
         }
     }
+
+    pub fn print(&self) -> String {
+        self.front_lookup
+            .iter()
+            .enumerate()
+            .filter(|(_, troops)| **troops != 0)
+            .map(|(idx, troops)| (self.index_pair(idx), troops))
+            .map(|((a, b), troops)| format!("- {} -> {} ({} troops)", a, b, troops.abs()))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
 }
 
 /// Resource to map [`PlayerId`] to [`Color`] for fast lookups
@@ -170,6 +201,7 @@ pub struct PlayerEntityMap(pub Vec<Option<Entity>>);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_case::test_case;
 
     #[test]
     fn test_get_net_troops_basic() {
@@ -240,5 +272,138 @@ mod tests {
         assert_eq!(expansions.get_net_troops(c, a), -7);
         assert_eq!(expansions.get_net_troops(b, c), 2);
         assert_eq!(expansions.get_net_troops(c, b), -2);
+    }
+
+    #[test_case(0, 1, 0; "first pair (0,1)")]
+    #[test_case(1, 0, 0; "first pair reversed (1,0)")]
+    #[test_case(0, 2, 1; "second pair (0,2)")]
+    #[test_case(2, 0, 1; "second pair reversed (2,0)")]
+    #[test_case(0, 3, 2; "third pair (0,3)")]
+    #[test_case(3, 0, 2; "third pair reversed (3,0)")]
+    #[test_case(1, 2, NUM_ENTITIES as usize - 1; "pair (1,2)")]
+    #[test_case(2, 1, NUM_ENTITIES as usize - 1; "pair (2,1) reversed")]
+    fn test_pair_index_basic(player_a: u16, player_b: u16, expected_idx: usize) {
+        let a = PlayerId::new_unchecked(player_a);
+        let b = PlayerId::new_unchecked(player_b);
+        assert_eq!(ActiveExpansions::pair_index(a, b), expected_idx);
+    }
+
+    #[test]
+    fn test_pair_index_symmetry() {
+        // Test that pair_index(a, b) == pair_index(b, a) for all pairs
+        for i in 0..10 {
+            for j in (i + 1)..10 {
+                let a = PlayerId::new_unchecked(i);
+                let b = PlayerId::new_unchecked(j);
+                assert_eq!(
+                    ActiveExpansions::pair_index(a, b),
+                    ActiveExpansions::pair_index(b, a),
+                    "pair_index should be symmetric for ({}, {})",
+                    i,
+                    j
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_pair_index_uniqueness() {
+        // Test that each pair gets a unique index
+        use std::collections::HashSet;
+        let mut seen_indices = HashSet::new();
+
+        for i in 0..20 {
+            for j in (i + 1)..20 {
+                let a = PlayerId::new_unchecked(i);
+                let b = PlayerId::new_unchecked(j);
+                let idx = ActiveExpansions::pair_index(a, b);
+
+                assert!(
+                    seen_indices.insert(idx),
+                    "Index {} already used! Collision for pair ({}, {})",
+                    idx,
+                    i,
+                    j
+                );
+            }
+        }
+    }
+
+    #[test_case(0, 0, 1; "index 0 maps to (0,1)")]
+    #[test_case(1, 0, 2; "index 1 maps to (0,2)")]
+    #[test_case(2, 0, 3; "index 2 maps to (0,3)")]
+    #[test_case(NUM_ENTITIES as usize - 1, 1, 2; "index N-1 maps to (1,2)")]
+    fn test_index_pair_basic(idx: usize, expected_a: u16, expected_b: u16) {
+        let expansions = ActiveExpansions::default();
+        let (a, b) = expansions.index_pair(idx);
+        assert_eq!(a.0, expected_a);
+        assert_eq!(b.0, expected_b);
+    }
+
+    #[test_case(0, 1; "pair (0,1)")]
+    #[test_case(0, 5; "pair (0,5)")]
+    #[test_case(0, 10; "pair (0,10)")]
+    #[test_case(1, 2; "pair (1,2)")]
+    #[test_case(1, 5; "pair (1,5)")]
+    #[test_case(5, 10; "pair (5,10)")]
+    #[test_case(10, 20; "pair (10,20)")]
+    #[test_case(15, 29; "pair (15,29)")]
+    fn test_index_pair_roundtrip(player_a: u16, player_b: u16) {
+        // Test that pair_index and index_pair are inverse operations
+        let expansions = ActiveExpansions::default();
+
+        let a = PlayerId::new_unchecked(player_a);
+        let b = PlayerId::new_unchecked(player_b);
+
+        let idx = ActiveExpansions::pair_index(a, b);
+        let (recovered_a, recovered_b) = expansions.index_pair(idx);
+
+        assert_eq!(
+            recovered_a.0, player_a,
+            "Failed to recover first player for pair ({}, {}), index {}",
+            player_a, player_b, idx
+        );
+        assert_eq!(
+            recovered_b.0, player_b,
+            "Failed to recover second player for pair ({}, {}), index {}",
+            player_a, player_b, idx
+        );
+    }
+
+    #[test]
+    fn test_index_pair_all_indices() {
+        // Test that index_pair works for a range of indices
+        let expansions = ActiveExpansions::default();
+
+        for idx in 0..100 {
+            let (a, b) = expansions.index_pair(idx);
+
+            // Verify that a < b (by construction of the triangular array)
+            assert!(
+                a < b,
+                "Expected a < b, got a={}, b={} for index {}",
+                a,
+                b,
+                idx
+            );
+
+            // Verify roundtrip
+            let recovered_idx = ActiveExpansions::pair_index(a, b);
+            assert_eq!(
+                recovered_idx, idx,
+                "Roundtrip failed: index {} -> ({}, {}) -> index {}",
+                idx, a, b, recovered_idx
+            );
+        }
+    }
+
+    #[test_case(NUM_ENTITIES - 2, NUM_ENTITIES - 1; "max and second max")]
+    #[test_case(0, NUM_ENTITIES - 1; "min and max")]
+    #[test_case(0, 1; "min pair")]
+    fn test_pair_index_edge_cases(player_a: u16, player_b: u16) {
+        // Test with edge case player IDs - should not panic
+        let a = PlayerId::new_unchecked(player_a);
+        let b = PlayerId::new_unchecked(player_b);
+        let _idx = ActiveExpansions::pair_index(a, b);
     }
 }

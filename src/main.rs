@@ -74,7 +74,6 @@ fn main() {
                 systems::setup,
                 systems::setup_map_texture,
                 systems::setup_gpu_perf_ui,
-                systems::seed_gpu_board,
             )
                 .chain(),
         )
