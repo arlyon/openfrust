@@ -34,9 +34,9 @@ fn are_adjacent(adjacency_packed: &[u32], p1: PlayerId, p2: PlayerId) -> bool {
 #[tracing::instrument(skip_all)]
 pub fn clear_disconnected_fronts(
     expansions: &mut ActiveExpansions,
-    mut players: Query<(Entity, &mut PlayerData), With<Alive>>, // Query just for PlayerData
-    adjacency: &[u32],                                          // Packed bitfield
-    player_map: &PlayerEntityMap,                               // O(1) lookup map
+    players: &mut Query<(Entity, &mut PlayerData), With<Alive>>, // Query just for PlayerData
+    adjacency: &[u32],                                           // Packed bitfield
+    player_map: &PlayerEntityMap,                                // O(1) lookup map
 ) {
     for a in 0..crate::NUM_ENTITIES {
         for b in (a + 1)..crate::NUM_ENTITIES {
@@ -85,10 +85,6 @@ pub fn clear_disconnected_fronts(
                 }
 
                 expansions.clear_border(a, b);
-
-                // Also remove the conquest queue for this border
-                expansions.conquer_queues.remove(&(a, b));
-                expansions.conquer_queues.remove(&(b, a));
             }
         }
     }

@@ -1,16 +1,15 @@
 use bevy::prelude::*;
 
-use crate::types::{Board, PlayerData, LivingPlayerUpdate};
+use crate::types::{LivingPlayerUpdate, PlayerData};
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
 
 /// Update player info text with troop counts and position at territory center
 #[tracing::instrument(skip_all)]
 pub fn update_player_info(
-    board: Res<Board>,
     players: Query<(Entity, &PlayerData), LivingPlayerUpdate>,
     mut text_query: Query<(&crate::PlayerInfoText, &mut Text2d, &mut Transform)>,
 ) {
-    if players.is_empty() && !board.is_changed() {
+    if players.is_empty() {
         return;
     }
 

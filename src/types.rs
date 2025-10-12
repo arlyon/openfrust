@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 use bitfield::bitfield;
-use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
 
 use crate::{NUM_ENTITIES, NUM_PAIRS};
 
@@ -86,8 +84,10 @@ pub struct PlayerData {
     pub char: char,
     pub troops: u32,
     pub tile_count: usize,
-    pub sum_x: u64, // Sum of x coordinates of all owned tiles (for center calculation)
-    pub sum_y: u64, // Sum of y coordinates of all owned tiles (for center calculation)
+    /// Sum of x coordinates of all owned tiles (for center calculation)
+    pub sum_x: u64,
+    /// Sum of y coordinates of all owned tiles (for center calculation)
+    pub sum_y: u64,
     pub color: Color,
 }
 
@@ -95,67 +95,10 @@ pub struct PlayerData {
 #[derive(Component)]
 pub struct Alive;
 
-/// Resource holding the game board (flattened for cache efficiency)
-#[derive(Resource)]
-pub struct Board {
-    pub tiles: Vec<Tile>,
-    pub width: usize,
-    pub height: usize,
-}
-
-impl Board {
-    /// Create a new board with the given dimensions
-    pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            tiles: vec![Tile::new(NO_OWNER, 1.0); width * height],
-            width,
-            height,
-        }
-    }
-
-    /// Get a tile at the given coordinates
-    #[inline]
-    pub fn get(&self, x: usize, y: usize) -> &Tile {
-        &self.tiles[y * self.width + x]
-    }
-
-    /// Get a mutable tile at the given coordinates
-    #[inline]
-    pub fn get_mut(&mut self, x: usize, y: usize) -> &mut Tile {
-        &mut self.tiles[y * self.width + x]
-    }
-
-    /// Get the index for the given coordinates
-    #[inline]
-    pub fn index(&self, x: usize, y: usize) -> usize {
-        y * self.width + x
-    }
-}
-
 /// Component linking player info text to player entity
 #[derive(Component)]
 pub struct PlayerInfoText {
     pub player_entity: Entity,
-}
-
-/// Represents a tile to be conquered in priority order
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub struct ConquerTask {
-    pub priority: u32,
-    pub x: usize,
-    pub y: usize,
-}
-
-impl Ord for ConquerTask {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other.priority.cmp(&self.priority) // Min-heap: lower priority processed first
-    }
-}
-
-impl PartialOrd for ConquerTask {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 /// Resource tracking all active expansion fronts
@@ -164,15 +107,12 @@ impl PartialOrd for ConquerTask {
 #[derive(Resource)]
 pub struct ActiveExpansions {
     pub fronts: Vec<i32>,
-    /// Priority queues for each border expansion
-    pub conquer_queues: HashMap<(PlayerId, PlayerId), BinaryHeap<ConquerTask>>,
 }
 
 impl Default for ActiveExpansions {
     fn default() -> Self {
         Self {
             fronts: vec![0; NUM_PAIRS as usize],
-            conquer_queues: HashMap::new(),
         }
     }
 }
@@ -192,10 +132,14 @@ impl ActiveExpansions {
         self.fronts[idx] += troops * multiplier;
     }
 
-    /// Get net troops for a border (positive means lower ID is winning)
+    /// Get net troops for a border. If positive, a has troops attacking b, otherwise b has troops attacking a
     pub fn get_net_troops(&self, a: PlayerId, b: PlayerId) -> i32 {
         let idx = Self::pair_index(a, b);
-        self.fronts[idx]
+        if a < b {
+            self.fronts[idx]
+        } else {
+            -self.fronts[idx]
+        }
     }
 
     /// Clear a specific border
@@ -222,3 +166,79 @@ pub struct PlayerColorMap(pub Vec<Color>);
 /// Resource to map [`PlayerId`] to [`Entity`] for O(1) lookups
 #[derive(Resource)]
 pub struct PlayerEntityMap(pub Vec<Option<Entity>>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_net_troops_basic() {
+        let mut expansions = ActiveExpansions {
+            fronts: vec![0; NUM_PAIRS as usize],
+        };
+        let a = PlayerId::new_unchecked(1);
+        let b = PlayerId::new_unchecked(2);
+
+        // Initially, no troops
+        assert_eq!(expansions.get_net_troops(a, b), 0);
+        assert_eq!(expansions.get_net_troops(b, a), 0);
+
+        // Add troops from a attacking b
+        expansions.add_troops(a, b, 5);
+        assert_eq!(expansions.get_net_troops(a, b), 5);
+        assert_eq!(expansions.get_net_troops(b, a), -5);
+
+        // Add troops from b attacking a (should subtract)
+        expansions.add_troops(b, a, 3);
+        assert_eq!(expansions.get_net_troops(a, b), 2);
+        assert_eq!(expansions.get_net_troops(b, a), -2);
+
+        // Add more troops from a attacking b
+        expansions.add_troops(a, b, 7);
+        assert_eq!(expansions.get_net_troops(a, b), 9);
+        assert_eq!(expansions.get_net_troops(b, a), -9);
+
+        // Clear border
+        expansions.clear_border(a, b);
+        assert_eq!(expansions.get_net_troops(a, b), 0);
+        assert_eq!(expansions.get_net_troops(b, a), 0);
+    }
+
+    #[test]
+    fn test_get_net_troops_symmetry() {
+        let mut expansions = ActiveExpansions {
+            fronts: vec![0; NUM_PAIRS as usize],
+        };
+        let a = PlayerId::new_unchecked(5);
+        let b = PlayerId::new_unchecked(3);
+
+        expansions.add_troops(a, b, 10);
+        assert_eq!(expansions.get_net_troops(a, b), 10);
+        assert_eq!(expansions.get_net_troops(b, a), -10);
+
+        expansions.add_troops(b, a, 4);
+        assert_eq!(expansions.get_net_troops(a, b), 6);
+        assert_eq!(expansions.get_net_troops(b, a), -6);
+    }
+
+    #[test]
+    fn test_get_net_troops_multiple_pairs() {
+        let mut expansions = ActiveExpansions {
+            fronts: vec![0; NUM_PAIRS as usize],
+        };
+        let a = PlayerId::new_unchecked(0);
+        let b = PlayerId::new_unchecked(1);
+        let c = PlayerId::new_unchecked(2);
+
+        expansions.add_troops(a, b, 3);
+        expansions.add_troops(a, c, 7);
+        expansions.add_troops(b, c, 2);
+
+        assert_eq!(expansions.get_net_troops(a, b), 3);
+        assert_eq!(expansions.get_net_troops(b, a), -3);
+        assert_eq!(expansions.get_net_troops(a, c), 7);
+        assert_eq!(expansions.get_net_troops(c, a), -7);
+        assert_eq!(expansions.get_net_troops(b, c), 2);
+        assert_eq!(expansions.get_net_troops(c, b), -2);
+    }
+}

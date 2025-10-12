@@ -11,6 +11,7 @@ use bevy::window::WindowResolution;
 use bevy_app_compute::prelude::*;
 use bevy_pancam::PanCamPlugin;
 
+pub mod map;
 mod systems;
 mod types;
 
@@ -21,7 +22,7 @@ pub use types::*;
 // --- GAME CONSTANTS ---
 pub const BOARD_WIDTH: usize = 8192;
 pub const BOARD_HEIGHT: usize = 8192;
-pub const NUM_PLAYERS: u16 = 1000; // limit is u11 - 1 ie 2047
+pub const NUM_PLAYERS: u16 = 10; // limit is u11 - 1 ie 2047
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
 pub const NUM_ENTITIES: u16 = NUM_PLAYERS + 1;
@@ -59,22 +60,17 @@ fn main() {
             AppComputePlugin,
         ))
         .add_perf_ui_simple_entry::<systems::PerfUiEntryGpuTime>()
-        .insert_resource(Time::<Fixed>::from_hz(1.0))
+        .insert_resource(Time::<Fixed>::from_hz(10.0))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
-        // Initialize Board before worker plugin (worker needs it during build)
-        .insert_resource(Board::new(BOARD_WIDTH, BOARD_HEIGHT))
-        // Initialize frame manager for async GPU pipeline (2 frames in flight)
-        .insert_resource(systems::GpuFrameManager::default())
-        // Initialize GPU timing resource
-        .insert_resource(systems::GpuOrchestratorTime::default())
+        // Initialize SimManager (owns frame manager and timing)
+        .insert_resource(systems::SimManager::default())
         .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())
         .add_systems(
             Startup,
             (
-                systems::setup,             // This will now populate the existing Board
-                systems::sync_board_to_gpu, // Sync populated board to GPU storage assets
+                systems::setup,
                 systems::setup_map_texture,
-                systems::setup_gpu_perf_ui, // Setup GPU timing display
+                systems::setup_gpu_perf_ui,
             )
                 .chain(),
         )

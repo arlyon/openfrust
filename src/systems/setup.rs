@@ -4,11 +4,18 @@ use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use rand::Rng;
 
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, NUM_PLAYERS};
-use crate::{NUM_ENTITIES, types::{Board, NO_OWNER, PlayerData, PlayerId, Alive, PlayerInfoText, PlayerColorMap, PlayerEntityMap, ActiveExpansions}};
+use crate::{
+    NUM_ENTITIES,
+    types::{
+        ActiveExpansions, Alive, NO_OWNER, PlayerColorMap, PlayerData, PlayerEntityMap, PlayerId,
+        PlayerInfoText,
+    },
+};
 
 const WILDERNESS_COLOR: Color = Color::srgb(0.74, 0.8, 0.53);
 
-/// Startup system to initialize the game
+/// Startup system to initialize the game, creating the camera, players,
+/// and expansions.
 #[tracing::instrument(skip_all)]
 pub fn setup(mut commands: Commands) {
     // Spawn camera with PanCam controls
@@ -28,7 +35,6 @@ pub fn setup(mut commands: Commands) {
     commands.spawn(PerfUiDefaultEntries::default());
 
     let mut rng = rand::rng();
-    let mut board_res = Board::new(BOARD_WIDTH, BOARD_HEIGHT);
 
     // Initialize PlayerColorMap and PlayerEntityMap
     let mut player_colors = vec![Color::srgb(0.1, 0.1, 0.1); NUM_ENTITIES.into()];
@@ -49,9 +55,7 @@ pub fn setup(mut commands: Commands) {
         let (start_x, start_y) = loop {
             let x = rng.random_range(10..BOARD_WIDTH - 10);
             let y = rng.random_range(5..BOARD_HEIGHT - 5);
-            if board_res.get(x, y).owner() == NO_OWNER {
-                break (x, y);
-            }
+            break (x, y);
         };
 
         let player_data = PlayerData {
@@ -65,9 +69,6 @@ pub fn setup(mut commands: Commands) {
         };
 
         player_colors[usize::from(i)] = color; // Populate the color map
-        board_res
-            .get_mut(start_x, start_y)
-            .set_owner(player_data.id);
 
         let player_entity = commands.spawn((player_data.clone(), Alive)).id();
         player_entity_map[usize::from(i)] = Some(player_entity); // Populate the entity map
@@ -85,7 +86,6 @@ pub fn setup(mut commands: Commands) {
         ));
     }
 
-    commands.insert_resource(board_res);
     commands.insert_resource(PlayerColorMap(player_colors));
     commands.insert_resource(PlayerEntityMap(player_entity_map));
     commands.insert_resource(ActiveExpansions::default());

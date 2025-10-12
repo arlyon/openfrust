@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use iyes_perf_ui::entry::PerfUiEntry;
 use iyes_perf_ui::prelude::*;
 
-use super::GpuOrchestratorTime;
+use super::SimManager;
 
 /// Spawn the GPU timing UI in the top left corner
 pub fn setup_gpu_perf_ui(mut commands: Commands) {
@@ -22,7 +22,7 @@ pub fn setup_gpu_perf_ui(mut commands: Commands) {
 pub struct PerfUiEntryGpuTime;
 
 impl PerfUiEntry for PerfUiEntryGpuTime {
-    type SystemParam = Res<'static, GpuOrchestratorTime>;
+    type SystemParam = Res<'static, SimManager>;
     type Value = f64;
 
     fn label(&self) -> &'static str {
@@ -35,9 +35,10 @@ impl PerfUiEntry for PerfUiEntryGpuTime {
 
     fn update_value(
         &self,
-        timing: &mut <Self::SystemParam as SystemParam>::Item<'_, '_>,
+        manager: &mut <Self::SystemParam as SystemParam>::Item<'_, '_>,
     ) -> Option<Self::Value> {
-        Some(timing.get())
+        // Access timing through the manager's public method
+        Some(manager.timing().get())
     }
 
     fn format_value(&self, value: &Self::Value) -> String {

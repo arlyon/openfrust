@@ -1,8 +1,6 @@
 mod border_material;
 mod disconnected_fronts;
 mod expansion_assignment;
-mod expansion_processing;
-mod game_update;
 mod gpu;
 mod gpu_orchestrator;
 mod map_renderer;
@@ -10,11 +8,13 @@ mod perf_ui;
 mod player_elimination;
 mod player_info;
 mod setup;
+mod sim_manager;
 
 pub use border_material::BorderMaterial;
-pub use gpu::{ExpansionWorker, GpuFrameManager, sync_board_to_gpu};
-pub use gpu_orchestrator::{gpu_orchestrator, GpuOrchestratorTime};
+pub use gpu::ExpansionWorker;
+pub use gpu_orchestrator::gpu_orchestrator;
 pub use map_renderer::setup_map_texture;
-pub use perf_ui::{setup_gpu_perf_ui, PerfUiEntryGpuTime};
+pub use perf_ui::{PerfUiEntryGpuTime, setup_gpu_perf_ui};
 pub use player_info::update_player_info;
 pub use setup::setup;
+pub use sim_manager::SimManager;

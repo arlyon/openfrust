@@ -1,8 +1,13 @@
+//! GPU pipeline design (One-Shot Mode)
+//!
+//! We keep 3 copies of the board. One is the "read" buffer (board_in) which is used as input to sim tick,
+//! while board_out is the destination for the results of the sim tick, and board_render is kept as an
+//! always-valid state for rendering.
+
 use bevy::prelude::*;
 use bevy_app_compute::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-use crate::types::Board;
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, EXPANSION_RATE_BASE, NUM_ENTITIES, NUM_PAIRS};
 
 /// Simulation parameters sent to the GPU as a uniform buffer
@@ -85,20 +90,9 @@ pub struct ExpansionWorker;
 
 impl ComputeWorker for ExpansionWorker {
     fn build(world: &mut World) -> AppComputeWorker<Self> {
-        // Get initial board state from the world
-        let board = world.resource::<Board>();
-
         // Pack two Tile(u16) values into each u32 for better memory efficiency
         // Each u32 contains: [tile2 (upper 16 bits) | tile1 (lower 16 bits)]
-        let initial_board_data: Vec<u32> = board
-            .tiles
-            .chunks_exact(2)
-            .map(|chunk| {
-                let tile1 = u32::from(chunk[0].0); // Lower 16 bits
-                let tile2 = u32::from(chunk[1].0); // Upper 16 bits
-                (tile2 << 16) | tile1
-            })
-            .collect();
+        let initial_board_data: Vec<u32> = vec![0; (BOARD_WIDTH * BOARD_HEIGHT) / 2 as usize];
 
         // Calculate dispatch sizes dynamically based on workgroup configuration
         let expansion_dispatch_x = div_ceil(
@@ -221,6 +215,9 @@ impl ComputeWorker for ExpansionWorker {
                 BufferSource::Worker("board_out"),
                 BufferSource::StorageAsset("board_render"),
             )
+            // TODO: do we copy board_out to board_in here?
+            // Configure worker to run only when explicitly executed
+            .one_shot()
             .build()
     }
 }

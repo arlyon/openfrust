@@ -4,6 +4,7 @@ use bevy::render::storage::ShaderStorageBuffer;
 use bevy::sprite_render::MeshMaterial2d;
 use bevy_app_compute::prelude::*;
 
+use crate::map::GameMap;
 use crate::systems::{BorderMaterial, ExpansionWorker};
 use crate::types::PlayerColorMap;
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, TILE_SIZE};
@@ -19,6 +20,8 @@ pub fn setup_map_texture(
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
     player_colors: Res<PlayerColorMap>,
 ) {
+    let _map = GameMap::load("africa").expect("Failed to load Africa map");
+
     // Get the handle to the render buffer
     let board_handle = worker
         .get_storage_buffer_asset_handle("board_render")

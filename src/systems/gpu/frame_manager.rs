@@ -3,13 +3,19 @@ use bevy::prelude::*;
 use super::GpuPlayerStats;
 use crate::NUM_ENTITIES;
 
-/// Manages the asynchronous GPU pipeline with 2 frames in flight.
+/// Manages the GPU pipeline with double-buffered result storage.
 ///
-/// This enables the CPU and GPU to work in parallel:
-/// - While GPU processes Frame N, CPU prepares Frame N+1 using results from Frame N-1
-/// - Introduces 1 tick of logical latency (acceptable for this simulation)
-/// - Dramatically improves throughput by eliminating CPU idle time
-#[derive(Resource)]
+/// The double buffering serves two purposes:
+/// 1. Prevents race conditions when reading/writing GPU results
+/// 2. Allows using previous frame's data while current frame writes new results
+///
+/// Timeline with one_shot() mode:
+/// - Tick 0: Execute GPU, frames_dispatched = 1 (no data yet)
+/// - Tick 1: Read tick 0 results into buffer 0, has_valid_data() = true
+/// - Tick 2+: Read into buffer (N%2), use buffer ((N-1)%2) for CPU logic
+///
+/// Note: Only requires 1 warmup tick since we explicitly wait for worker.ready()
+#[derive(Resource, Debug)]
 pub struct GpuFrameManager {
     /// Which frame we're currently preparing to dispatch (alternates 0/1)
     pub current_frame: usize,
@@ -53,13 +59,13 @@ impl GpuFrameManager {
 
     /// Get the frame index we should READ from (results from previous tick)
     pub fn read_frame(&self) -> usize {
-        // We read from the opposite frame we're writing to
-        (self.current_frame + 1) % 2
+        0
     }
 
     /// Get the frame index we should WRITE results into (current tick's GPU results)
     pub fn write_frame(&self) -> usize {
-        self.current_frame
+        // Write to the opposite frame
+        0
     }
 
     /// Get the player stats from the readable frame (N-1 results)
@@ -78,6 +84,9 @@ impl GpuFrameManager {
                 sum_y_high: self.sum_y_high_buffers[frame][i],
             });
         }
+
+        tracing::info!("GpuFrameManager::get_readable_stats(): {:?}", stats);
+
         stats
     }
 
@@ -94,8 +103,14 @@ impl GpuFrameManager {
 
     /// Check if the pipeline has valid data to read (warmup complete)
     pub fn has_valid_data(&self) -> bool {
-        // We need at least 2 frames dispatched before we have valid results
-        self.frames_dispatched >= 2
+        // With one_shot() mode, we only need 1 warmup tick:
+        // - Tick 0: Execute GPU work (no data to read yet)
+        // - Tick 1: Read results, now have valid data!
+        //
+        // We used to require >= 2 for the old automatic mode where GPU work
+        // could overlap unpredictably. Now with explicit worker.ready() checks,
+        // we know tick 0 is complete before tick 1 reads it.
+        self.frames_dispatched >= 1
     }
 }
 
