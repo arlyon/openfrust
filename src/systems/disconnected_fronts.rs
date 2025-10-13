@@ -77,6 +77,7 @@ fn are_adjacent(adjacency_packed: &[u32], p1: PlayerId, p2: PlayerId) -> bool {
     let y = p1_u32.max(p2_u32);
 
     // This formula must be identical to the one in the shader and ActiveExpansions::pair_index
+    // TODO: make this nicer. we should have an expansion manager that handles adjecency, expansions, and troop count
     let linear_bit_index = (n * x - (x * (x + 1)) / 2 + y - x - 1) as usize;
 
     let word_index = linear_bit_index / 32;

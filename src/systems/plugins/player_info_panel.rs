@@ -1,3 +1,23 @@
+//! Player info panel UI plugin
+//!
+//! This module provides a UI panel that displays detailed information about the player
+//! whose territory is currently under the cursor.
+//!
+//! ## Usage
+//!
+//! Add the [`PlayerInfoPanelPlugin`] to your app:
+//!
+//! ```no_run
+//! # use bevy::prelude::*;
+//! # use openfrust::systems::plugins::player_info_panel::PlayerInfoPanelPlugin;
+//! App::new()
+//!     .add_plugins(PlayerInfoPanelPlugin)
+//!     .run();
+//! ```
+//!
+//! The panel will automatically display information about the player under the cursor,
+//! including troops, tile count, borders, and active fronts.
+
 use bevy::prelude::*;
 
 use crate::shaders::compute::CursorIDResult;
@@ -262,4 +282,37 @@ pub fn update_player_info_panel(
             ));
         }
     });
+}
+
+/// Plugin that manages the player info panel UI.
+///
+/// This plugin sets up a UI panel in the bottom-right corner that displays
+/// detailed information about the player whose territory is under the cursor.
+///
+/// The plugin adds:
+/// - [`setup_player_info_panel`] system in [`Startup`] to create the UI
+/// - [`update_player_info_panel`] system in [`Update`] to refresh the panel content
+///
+/// The panel shows:
+/// - Player ID, character, and color
+/// - Troop count and tile count
+/// - List of neighboring players (borders)
+/// - Active military fronts with troop allocations
+///
+/// ## Example
+///
+/// ```no_run
+/// # use bevy::prelude::*;
+/// # use openfrust::systems::plugins::player_info_panel::PlayerInfoPanelPlugin;
+/// App::new()
+///     .add_plugins(PlayerInfoPanelPlugin)
+///     .run();
+/// ```
+pub struct PlayerInfoPanelPlugin;
+
+impl Plugin for PlayerInfoPanelPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, setup_player_info_panel)
+            .add_systems(Update, update_player_info_panel);
+    }
 }

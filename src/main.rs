@@ -71,24 +71,18 @@ fn main() {
         // Initialize the sim plugins, gpu-based expansion and cursor querying
         .add_plugins(shaders::compute::ExpansionPlugin)
         .add_plugins(shaders::compute::CursorQueryPlugin)
+        .add_plugins(systems::plugins::PlayerInfoPanelPlugin)
         .add_systems(
             Startup,
             (
                 systems::setup,
                 systems::setup_map_texture,
                 systems::setup_gpu_perf_ui,
-                systems::setup_player_info_panel,
             )
                 .chain(),
         )
         .add_systems(FixedUpdate, sim)
-        .add_systems(
-            Update,
-            (
-                systems::update_player_info,
-                systems::update_player_info_panel,
-            ),
-        )
+        .add_systems(Update, systems::update_player_info)
         .run();
 }
 

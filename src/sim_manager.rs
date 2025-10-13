@@ -179,9 +179,8 @@ impl SimManager {
 }
 
 /// Apply troop decay to all active fronts.
+#[tracing::instrument(skip_all)]
 fn apply_troop_decay(expansions: &mut ActiveExpansions) {
-    let _span = tracing::info_span!("apply_troop_decay").entered();
-
     for troops in &mut expansions.front_lookup {
         if *troops != 0 {
             let abs_troops = troops.abs();
