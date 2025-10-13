@@ -111,7 +111,7 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
         let foam_anim_speed = 1.5;
         let coastal_anim_speed = 0.5;
         // Base distances (in pixels)
-        let foam_base_dist = 1.5;
+        let foam_base_dist = 0.5;
         let foam_anim_amplitude = 1.0; // Foam will pulse between 1.5 and 3.0
         let coastal_base_dist = 0.0;
         let coastal_anim_amplitude = 3.0; // Coastal will wave between 8.0 and 11.0
@@ -307,7 +307,32 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         let left_owner = get_owner_at(pixel_coord - vec2<i32>(offset, 0));
         let right_owner = get_owner_at(pixel_coord + vec2<i32>(offset, 0));
 
-        var is_owner_border = (center_owner != top_owner || center_owner != bottom_owner || center_owner != left_owner || center_owner != right_owner);
+        // Get terrain of neighbors to detect ocean vs land boundaries
+        let top_terrain = get_map_tile_at(pixel_coord + vec2<i32>(0, offset));
+        let bottom_terrain = get_map_tile_at(pixel_coord - vec2<i32>(0, offset));
+        let left_terrain = get_map_tile_at(pixel_coord - vec2<i32>(offset, 0));
+        let right_terrain = get_map_tile_at(pixel_coord + vec2<i32>(offset, 0));
+
+        // Ocean tiles should NOT create borders at all
+        let center_is_ocean = is_ocean(center_terrain);
+
+        var is_owner_border = false;
+        if (!center_is_ocean) {
+            // Land tiles check for ownership changes OR ocean neighbors (coastlines)
+            // For wilderness (owner 0), we need to check if neighbor is ocean
+            let ownership_change = (center_owner != top_owner || center_owner != bottom_owner || center_owner != left_owner || center_owner != right_owner);
+
+            // If we're wilderness land, also check if any neighbor is ocean
+            let has_ocean_neighbor = (is_ocean(top_terrain) || is_ocean(bottom_terrain) || is_ocean(left_terrain) || is_ocean(right_terrain));
+
+            if (center_owner == 0u) {
+                // Wilderness: border if ownership changes OR if bordering ocean
+                is_owner_border = ownership_change || has_ocean_neighbor;
+            } else {
+                // Player territory: border only on ownership changes
+                is_owner_border = ownership_change;
+            }
+        }
 
         if (is_owner_border) {
             return vec4<f32>(base_color.rgb * border_color.rgb, base_color.a);
