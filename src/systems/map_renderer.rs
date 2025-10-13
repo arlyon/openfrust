@@ -8,7 +8,7 @@ use crate::TILE_SIZE;
 use crate::map::GameMap;
 use crate::shaders::BorderMaterial;
 use crate::shaders::compute::ExpansionWorker;
-use crate::types::PlayerColorMap;
+use crate::types::{PlayerColorMap, RenderSettings};
 
 const LABEL_INTERVAL: usize = 256; // Show coordinate every 256 pixels
 
@@ -21,6 +21,7 @@ pub fn setup_map_texture(
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
     player_colors: Res<PlayerColorMap>,
     map: Res<GameMap>,
+    render_settings: Res<RenderSettings>,
 ) {
     // Get the handle to the render buffer
     let board_handle = worker
@@ -65,6 +66,8 @@ pub fn setup_map_texture(
         player_colors: colors_buffer,
         map_terrain: terrain_handle,
         time: 0.0,
+        enable_water_animation: if render_settings.enable_water_animation { 1 } else { 0 },
+        enable_players: if render_settings.enable_players { 1 } else { 0 },
     });
 
     // Spawn the map using our custom material
@@ -146,9 +149,25 @@ fn spawn_coordinate_labels(commands: &mut Commands, map: &GameMap) {
 pub fn update_water_animation_time(
     time: Res<Time>,
     mut materials: ResMut<Assets<BorderMaterial>>,
+    render_settings: Res<RenderSettings>,
 ) {
-    // Iterate over all BorderMaterial assets and update their time uniform
-    for (_, material) in materials.iter_mut() {
-        material.time = time.elapsed_secs();
+    // Only update time if water animation is enabled
+    if render_settings.enable_water_animation {
+        for (_, material) in materials.iter_mut() {
+            material.time = time.elapsed_secs();
+        }
+    }
+}
+
+/// Syncs RenderSettings changes to all BorderMaterial instances
+pub fn sync_render_settings_to_materials(
+    render_settings: Res<RenderSettings>,
+    mut materials: ResMut<Assets<BorderMaterial>>,
+) {
+    if render_settings.is_changed() {
+        for (_, material) in materials.iter_mut() {
+            material.enable_water_animation = if render_settings.enable_water_animation { 1 } else { 0 };
+            material.enable_players = if render_settings.enable_players { 1 } else { 0 };
+        }
     }
 }

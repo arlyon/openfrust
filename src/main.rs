@@ -68,6 +68,8 @@ fn main() {
         .insert_resource(map::GameMap::load("giantworldmap").expect("Failed to load map"))
         // Initialize SimManager (owns frame manager and timing)
         .insert_resource(SimManager::default())
+        // Initialize RenderSettings with default values (both features enabled)
+        .insert_resource(RenderSettings::default())
         // Initialize the sim plugins, gpu-based expansion and cursor querying
         .add_plugins(shaders::compute::ExpansionPlugin)
         .add_plugins(shaders::compute::CursorQueryPlugin)
@@ -86,6 +88,8 @@ fn main() {
             Update,
             (
                 systems::update_player_info,
+                systems::handle_render_input,
+                systems::sync_render_settings_to_materials,
                 systems::update_water_animation_time,
             ),
         )

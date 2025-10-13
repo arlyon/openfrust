@@ -7,6 +7,8 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var<storage> player_colors: array<vec4<f32>>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(5) var<storage, read> map_terrain: array<u32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(6) var<uniform> time: f32;
+@group(#{MATERIAL_BIND_GROUP}) @binding(7) var<uniform> enable_water_animation: u32;
+@group(#{MATERIAL_BIND_GROUP}) @binding(8) var<uniform> enable_players: u32;
 
 // --- Simplex Noise Functions ---
 fn mod289(x: vec2<f32>) -> vec2<f32> {
@@ -79,32 +81,39 @@ fn get_terrain_color(tile: u32, coord: vec2<i32>) -> vec4<f32> {
         }
     } else if (is_ocean(tile)) {
         let base_color = vec3<f32>(0.01, 0.08, 0.23);
-        let highlight_color = vec3<f32>(0.1, 0.2, 0.7);
-        let f_coord = vec2<f32>(coord); // Cast integer coord to float once
 
-        // UPDATED: Use the discrete f_coord and much smaller scale values.
-        // These values create blocky wave patterns roughly 25-50 pixels in size.
-        let wave1 = animated_simplex_noise(f_coord, 0.4, 0.5); // noise
-        let wave2 = animated_simplex_noise(f_coord, 0.2, 0.04); // fine waves
-        let wave3 = animated_simplex_noise(f_coord, 0.1, 0.001); // broad
+        // Check if water animation is enabled
+        if (enable_water_animation != 0u) {
+            let highlight_color = vec3<f32>(0.1, 0.2, 0.7);
+            let f_coord = vec2<f32>(coord); // Cast integer coord to float once
 
-        let combined_waves = (
-            wave1 * 1.0
-            + wave2 * 0.2
-            + wave3 * 0.4
-        ) * 0.5;
-        var final_color = mix(base_color, highlight_color, combined_waves * 0.5);
+            // UPDATED: Use the discrete f_coord and much smaller scale values.
+            // These values create blocky wave patterns roughly 25-50 pixels in size.
+            let wave1 = animated_simplex_noise(f_coord, 0.4, 0.5); // noise
+            let wave2 = animated_simplex_noise(f_coord, 0.2, 0.04); // fine waves
+            let wave3 = animated_simplex_noise(f_coord, 0.1, 0.001); // broad
 
-        // UPDATED: Specular highlight is also calculated on the discrete grid.
-        let specular_scale = 0.09; // Makes glints about 6-7 pixels wide
-        let specular_stretch = vec2<f32>(1.0, 2.5); // Stretch horizontally
-        let specular_noise = animated_simplex_noise(f_coord * specular_stretch, 0.3, specular_scale);
+            let combined_waves = (
+                wave1 * 1.0
+                + wave2 * 0.2
+                + wave3 * 0.4
+            ) * 0.5;
+            var final_color = mix(base_color, highlight_color, combined_waves * 0.5);
 
-        let glint_amount = pow(specular_noise, 32.0);
-        let specular_color = vec3<f32>(1.0, 0.95, 0.8);
-        final_color += glint_amount * specular_color * 1.5;
+            // UPDATED: Specular highlight is also calculated on the discrete grid.
+            let specular_scale = 0.09; // Makes glints about 6-7 pixels wide
+            let specular_stretch = vec2<f32>(1.0, 2.5); // Stretch horizontally
+            let specular_noise = animated_simplex_noise(f_coord * specular_stretch, 0.3, specular_scale);
 
-        return vec4<f32>(final_color, 1.0);
+            let glint_amount = pow(specular_noise, 32.0);
+            let specular_color = vec3<f32>(1.0, 0.95, 0.8);
+            final_color += glint_amount * specular_color * 1.5;
+
+            return vec4<f32>(final_color, 1.0);
+        } else {
+            // Simple static water color when animation is disabled
+            return vec4<f32>(base_color, 1.0);
+        }
     } else {
         // Lake - lighter blue
         return vec4<f32>(0.3, 0.5, 0.7, 1.0);
@@ -151,25 +160,33 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    let player_color = player_colors[center_owner];
     var base_color: vec4<f32>;
-    if (center_owner == 0u) {
+    if (enable_players != 0u) {
+        let player_color = player_colors[center_owner];
+        if (center_owner == 0u) {
+            base_color = terrain_color;
+        } else {
+            base_color = mix(terrain_color, player_color, 0.6);
+        }
+    } else {
+        // When player rendering is disabled, just show terrain
         base_color = terrain_color;
-    } else {
-        base_color = mix(terrain_color, player_color, 0.6);
     }
 
-    let offset = i32(border_thickness);
-    let top_owner = get_owner_at(pixel_coord + vec2<i32>(0, offset));
-    let bottom_owner = get_owner_at(pixel_coord - vec2<i32>(0, offset));
-    let left_owner = get_owner_at(pixel_coord - vec2<i32>(offset, 0));
-    let right_owner = get_owner_at(pixel_coord + vec2<i32>(offset, 0));
+    // Only render borders if player rendering is enabled
+    if (enable_players != 0u) {
+        let offset = i32(border_thickness);
+        let top_owner = get_owner_at(pixel_coord + vec2<i32>(0, offset));
+        let bottom_owner = get_owner_at(pixel_coord - vec2<i32>(0, offset));
+        let left_owner = get_owner_at(pixel_coord - vec2<i32>(offset, 0));
+        let right_owner = get_owner_at(pixel_coord + vec2<i32>(offset, 0));
 
-    var is_owner_border = (center_owner != top_owner || center_owner != bottom_owner || center_owner != left_owner || center_owner != right_owner);
+        var is_owner_border = (center_owner != top_owner || center_owner != bottom_owner || center_owner != left_owner || center_owner != right_owner);
 
-    if (is_owner_border) {
-        return vec4<f32>(base_color.rgb * border_color.rgb, base_color.a);
-    } else {
-        return base_color;
+        if (is_owner_border) {
+            return vec4<f32>(base_color.rgb * border_color.rgb, base_color.a);
+        }
     }
+
+    return base_color;
 }

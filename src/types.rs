@@ -198,6 +198,24 @@ pub struct PlayerColorMap(pub Vec<Color>);
 #[derive(Resource)]
 pub struct PlayerEntityMap(pub Vec<Option<Entity>>);
 
+/// Resource to control rendering features
+#[derive(Resource, Clone)]
+pub struct RenderSettings {
+    /// Enable/disable fancy animated water rendering
+    pub enable_water_animation: bool,
+    /// Enable/disable player rendering (territory colors and borders)
+    pub enable_players: bool,
+}
+
+impl Default for RenderSettings {
+    fn default() -> Self {
+        Self {
+            enable_water_animation: true,
+            enable_players: true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

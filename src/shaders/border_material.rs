@@ -33,6 +33,14 @@ pub struct BorderMaterial {
     /// Global time for animations, like water effects
     #[uniform(6)]
     pub time: f32,
+
+    /// Enable/disable fancy water animation (0 = disabled, 1 = enabled)
+    #[uniform(7)]
+    pub enable_water_animation: u32,
+
+    /// Enable/disable player rendering - colors and borders (0 = disabled, 1 = enabled)
+    #[uniform(8)]
+    pub enable_players: u32,
 }
 
 impl Material2d for BorderMaterial {
