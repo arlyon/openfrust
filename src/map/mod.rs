@@ -466,6 +466,40 @@ impl GameMap {
             Some(curr)
         })
     }
+
+    /// Generate a distance field texture showing distance from ocean tiles to nearest land
+    /// Returns a Vec<f32> where each value is the distance in pixels from that tile to the nearest land
+    /// This is used to optimize coastal rendering effects in the shader
+    pub fn generate_distance_field(&self) -> Vec<f32> {
+        use std::collections::VecDeque;
+
+        let total_tiles = (self.width * self.height) as usize;
+        let mut distances = vec![f32::INFINITY; total_tiles];
+        let mut queue = VecDeque::new();
+
+        // Initialize: all land tiles have distance 0, add them to the queue
+        for tile_ref in 0..total_tiles {
+            if self.terrain[tile_ref].is_land() {
+                distances[tile_ref] = 0.0;
+                queue.push_back(tile_ref);
+            }
+        }
+
+        // BFS propagation: spread outward from all land tiles
+        while let Some(tile_ref) = queue.pop_front() {
+            let current_distance = distances[tile_ref];
+
+            for neighbor in self.neighbors(tile_ref) {
+                let new_distance = current_distance + 1.0;
+                if new_distance < distances[neighbor] {
+                    distances[neighbor] = new_distance;
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+
+        distances
+    }
 }
 
 #[cfg(test)]

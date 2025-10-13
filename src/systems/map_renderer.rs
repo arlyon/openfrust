@@ -19,10 +19,13 @@ pub fn setup_map_texture(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<BorderMaterial>>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
+    mut images: ResMut<Assets<Image>>,
     player_colors: Res<PlayerColorMap>,
     map: Res<GameMap>,
     render_settings: Res<RenderSettings>,
 ) {
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+
     // Get the handle to the render buffer
     let board_handle = worker
         .get_storage_buffer_asset_handle("board_render")
@@ -51,6 +54,34 @@ pub fn setup_map_texture(
         RenderAssetUsages::RENDER_WORLD,
     ));
 
+    // Generate the distance field texture
+    info!("Generating distance field texture...");
+    let distance_data = map.generate_distance_field();
+
+    // Convert f32 distances to RGBA8 bytes for the texture
+    // We'll store the distance in the red channel normalized to 0-255
+    let distance_bytes: Vec<u8> = distance_data
+        .iter()
+        .flat_map(|&dist| {
+            // Normalize distance: we clamp to a max of 255 pixels
+            let normalized = (dist.min(255.0) / 255.0 * 255.0) as u8;
+            [normalized, 0, 0, 255] // R=distance, G=0, B=0, A=255
+        })
+        .collect();
+
+    let distance_texture = images.add(Image::new(
+        Extent3d {
+            width: map.width(),
+            height: map.height(),
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        distance_bytes,
+        TextureFormat::Rgba8Unorm,
+        RenderAssetUsages::RENDER_WORLD,
+    ));
+    info!("Distance field texture generated successfully");
+
     // Create a quad mesh that matches the map dimensions
     let mesh = meshes.add(Rectangle::new(
         map.width() as f32 * TILE_SIZE,
@@ -73,6 +104,7 @@ pub fn setup_map_texture(
         },
         enable_players: if render_settings.enable_players { 1 } else { 0 },
         enable_sphere_projection: 0,
+        distance_texture,
     });
 
     // Spawn the map using our custom material

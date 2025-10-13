@@ -10,6 +10,8 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(7) var<uniform> enable_water_animation: u32;
 @group(#{MATERIAL_BIND_GROUP}) @binding(8) var<uniform> enable_players: u32;
 @group(#{MATERIAL_BIND_GROUP}) @binding(9) var<uniform> enable_sphere_projection: u32;
+@group(#{MATERIAL_BIND_GROUP}) @binding(10) var distance_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(11) var distance_sampler: sampler;
 
 
 // --- Simplex Noise Functions ---
@@ -67,28 +69,11 @@ fn is_land(tile: u32) -> bool { return (tile & 0x80u) != 0u; }
 fn is_ocean(tile: u32) -> bool { return (tile & 0x20u) != 0u; }
 fn get_magnitude(tile: u32) -> u32 { return tile & 0x1Fu; }
 
-fn is_near_land(coord: vec2<i32>, search_radius: i32) -> bool {
-    // Loop in a square grid around the coordinate
-    for (var dy: i32 = -search_radius; dy <= search_radius; dy = dy + 1) {
-        for (var dx: i32 = -search_radius; dx <= search_radius; dx = dx + 1) {
-            // No need to check the center pixel itself
-            if (dx == 0 && dy == 0) {
-                continue;
-            }
-            let neighbor_coord = coord + vec2<i32>(dx, dy);
-            let neighbor_tile = get_map_tile_at(neighbor_coord);
-            if (is_land(neighbor_tile)) {
-                // Found land within the radius
-                return true;
-            }
-        }
-    }
-    // No land found
-    return false;
-}
+// REMOVED: The expensive distance_to_land function is no longer needed!
+// We now use a pre-computed distance field texture instead.
 
-// UPDATED: Signature changed to accept discrete integer coordinates
-fn get_terrain_color(tile: u32, coord: vec2<i32>) -> vec4<f32> {
+// UPDATED: Now takes UV coordinate for texture sampling instead of discrete pixel coord
+fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
     if (is_land(tile)) {
         let mag = get_magnitude(tile);
         if (mag < 10u) {
@@ -102,31 +87,66 @@ fn get_terrain_color(tile: u32, coord: vec2<i32>) -> vec4<f32> {
             return vec4<f32>(0.5, 0.5, 0.5, 1.0) * brightness;
         }
     } else if (is_ocean(tile)) {
-        // --- START OF NEW LOGIC ---
-        var base_color: vec3<f32>;
+        // Sample the distance texture multiple times to blur/smooth the SDF
+        // This creates softer, more natural-looking coastal transitions
+        let blur_offset = 1.0 / texture_size.x; // One pixel offset in UV space
+        let dist_center = textureSample(distance_texture, distance_sampler, uv).r;
+        let dist_right = textureSample(distance_texture, distance_sampler, uv + vec2<f32>(blur_offset, 0.0)).r;
+        let dist_left = textureSample(distance_texture, distance_sampler, uv - vec2<f32>(blur_offset, 0.0)).r;
+        let dist_up = textureSample(distance_texture, distance_sampler, uv + vec2<f32>(0.0, blur_offset)).r;
+        let dist_down = textureSample(distance_texture, distance_sampler, uv - vec2<f32>(0.0, blur_offset)).r;
 
-        // Define our radii and colors
-        const FOAM_RADIUS: i32 = 2;
-        const COASTAL_RADIUS: i32 = 8;
-        let foam_color = vec3<f32>(0.9, 0.95, 1.0);      // Bright, slightly blueish white for foam
-        let coastal_color = vec3<f32>(0.1, 0.5, 0.6);    // A nice teal for coastal water
-        let deep_ocean_color = vec3<f32>(0.01, 0.08, 0.23); // Original deep blue
+        // Average the samples for a simple box blur
+        let dist_blurred = (dist_center + dist_right + dist_left + dist_up + dist_down) / 5.0;
+        let dist = dist_blurred * 255.0; // Denormalize back to pixels
 
-        // Check for foam right next to the land (a small radius)
-        if (is_near_land(coord, FOAM_RADIUS)) {
-            base_color = foam_color;
-        }
-        // Then check for coastal water in a wider radius
-        else if (is_near_land(coord, COASTAL_RADIUS)) {
-            base_color = coastal_color;
-        }
-        // Otherwise, it's deep ocean
-        else {
-            base_color = deep_ocean_color;
-        }
-        // --- END OF NEW LOGIC ---
+        // --- Tweak these parameters to change the look ---
+        // Animation
+        let foam_anim_speed = 2.0;
+        let coastal_anim_speed = 0.5;
+        // Base distances (in pixels)
+        let foam_base_dist = 1.5;
+        let foam_anim_amplitude = 1.5; // Foam will pulse between 1.5 and 3.0
+        let coastal_base_dist = 0.0;
+        let coastal_anim_amplitude = 3.0; // Coastal will wave between 8.0 and 11.0
+        // Blending widths (how soft the transitions are)
+        let foam_to_coastal_blend: f32 = 2.0;
+        let coastal_to_ocean_blend: f32 = 20.0;
+        // --- End of parameters ---
 
-        // Check if water animation is enabled
+        // Colors
+        let foam_color = vec3<f32>(0.9, 0.95, 1.0);
+        let coastal_color = vec3<f32>(0.1, 0.5, 0.6);
+        let deep_ocean_color = vec3<f32>(0.01, 0.08, 0.23);
+
+        // Add noise-based variation to the animation for more organic movement
+        let f_coord = vec2<f32>(coord);
+        let foam_noise = animated_simplex_noise(f_coord, 1.0, 0.4) * 2.0 - 1.0; // Range: -1 to 1
+        let coastal_noise = animated_simplex_noise(f_coord, 1.0, 0.4) * 2.0 - 1.0; // Range: -1 to 1
+
+        // Animate the distances using sine waves for a smooth ebb and flow, plus noise
+        let foam_pulse = (sin(time * foam_anim_speed) + 1.0) * 0.5; // Varies 0.0 to 1.0
+        let animated_foam_edge = foam_base_dist + foam_pulse * foam_anim_amplitude + foam_noise * 0.5;
+
+        // Use a different speed and phase for the coastal wave to make it look more natural
+        let coastal_wave = (sin(time * coastal_anim_speed + 2.0) + 1.0) * 0.5;
+        let animated_coastal_edge = coastal_base_dist + coastal_wave * coastal_anim_amplitude + coastal_noise * 5.0;
+
+        // Calculate the mix factors using smoothstep for a nice gradient
+        // 1. How much foam should be visible? Fades out from the animated foam edge.
+        let foam_mix = 1.0 - smoothstep(animated_foam_edge, animated_foam_edge + foam_to_coastal_blend, dist);
+        // 2. How much coastal water should be visible? Fades out from the animated coastal edge.
+        let coastal_mix = 1.0 - smoothstep(animated_coastal_edge, animated_coastal_edge + coastal_to_ocean_blend, dist);
+
+        // Layer the colors using the mix factors. Start with the outermost color.
+        var base_color = deep_ocean_color;
+        base_color = mix(base_color, coastal_color, coastal_mix); // Blend coastal on top of deep ocean
+        base_color = mix(base_color, foam_color, foam_mix);       // Blend foam on top of everything
+
+        // --- END OF OPTIMIZED LOGIC ---
+
+        // The existing wave animation now applies to our newly blended base color
+        // Note: Still uses discrete coord for noise patterns
         if (enable_water_animation != 0u) {
             let highlight_color = vec3<f32>(0.1, 0.2, 0.7);
             let f_coord = vec2<f32>(coord);
@@ -239,8 +259,8 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let center_owner = get_owner_at(pixel_coord);
     let center_terrain = get_map_tile_at(pixel_coord);
 
-    // UPDATED: Pass the discrete pixel_coord instead of the continuous uv.
-    var terrain_color = get_terrain_color(center_terrain, pixel_coord);
+    // UPDATED: Pass both uv (for distance texture sampling) and pixel_coord (for noise)
+    var terrain_color = get_terrain_color(center_terrain, uv, pixel_coord);
 
     // Shoreline Effect
     let center_is_land = is_land(center_terrain);

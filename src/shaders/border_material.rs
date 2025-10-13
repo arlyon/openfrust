@@ -45,6 +45,11 @@ pub struct BorderMaterial {
     /// Enable/disable sphere projection (0 = disabled, 1 = enabled)
     #[uniform(9)]
     pub enable_sphere_projection: u32,
+
+    /// Pre-computed distance field texture (distance to nearest land)
+    #[texture(10)]
+    #[sampler(11)]
+    pub distance_texture: Handle<Image>,
 }
 
 impl Material2d for BorderMaterial {
