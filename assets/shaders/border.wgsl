@@ -67,6 +67,26 @@ fn is_land(tile: u32) -> bool { return (tile & 0x80u) != 0u; }
 fn is_ocean(tile: u32) -> bool { return (tile & 0x20u) != 0u; }
 fn get_magnitude(tile: u32) -> u32 { return tile & 0x1Fu; }
 
+fn is_near_land(coord: vec2<i32>, search_radius: i32) -> bool {
+    // Loop in a square grid around the coordinate
+    for (var dy: i32 = -search_radius; dy <= search_radius; dy = dy + 1) {
+        for (var dx: i32 = -search_radius; dx <= search_radius; dx = dx + 1) {
+            // No need to check the center pixel itself
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            let neighbor_coord = coord + vec2<i32>(dx, dy);
+            let neighbor_tile = get_map_tile_at(neighbor_coord);
+            if (is_land(neighbor_tile)) {
+                // Found land within the radius
+                return true;
+            }
+        }
+    }
+    // No land found
+    return false;
+}
+
 // UPDATED: Signature changed to accept discrete integer coordinates
 fn get_terrain_color(tile: u32, coord: vec2<i32>) -> vec4<f32> {
     if (is_land(tile)) {
@@ -82,29 +102,46 @@ fn get_terrain_color(tile: u32, coord: vec2<i32>) -> vec4<f32> {
             return vec4<f32>(0.5, 0.5, 0.5, 1.0) * brightness;
         }
     } else if (is_ocean(tile)) {
-        let base_color = vec3<f32>(0.01, 0.08, 0.23);
+        // --- START OF NEW LOGIC ---
+        var base_color: vec3<f32>;
+
+        // Define our radii and colors
+        const FOAM_RADIUS: i32 = 2;
+        const COASTAL_RADIUS: i32 = 8;
+        let foam_color = vec3<f32>(0.9, 0.95, 1.0);      // Bright, slightly blueish white for foam
+        let coastal_color = vec3<f32>(0.1, 0.5, 0.6);    // A nice teal for coastal water
+        let deep_ocean_color = vec3<f32>(0.01, 0.08, 0.23); // Original deep blue
+
+        // Check for foam right next to the land (a small radius)
+        if (is_near_land(coord, FOAM_RADIUS)) {
+            base_color = foam_color;
+        }
+        // Then check for coastal water in a wider radius
+        else if (is_near_land(coord, COASTAL_RADIUS)) {
+            base_color = coastal_color;
+        }
+        // Otherwise, it's deep ocean
+        else {
+            base_color = deep_ocean_color;
+        }
+        // --- END OF NEW LOGIC ---
 
         // Check if water animation is enabled
         if (enable_water_animation != 0u) {
             let highlight_color = vec3<f32>(0.1, 0.2, 0.7);
-            let f_coord = vec2<f32>(coord); // Cast integer coord to float once
+            let f_coord = vec2<f32>(coord);
 
-            // UPDATED: Use the discrete f_coord and much smaller scale values.
-            // These values create blocky wave patterns roughly 25-50 pixels in size.
-            let wave1 = animated_simplex_noise(f_coord, 0.4, 0.5); // noise
-            let wave2 = animated_simplex_noise(f_coord, 0.2, 0.04); // fine waves
-            let wave3 = animated_simplex_noise(f_coord, 0.1, 0.001); // broad
+            let wave1 = animated_simplex_noise(f_coord, 0.4, 0.5);
+            let wave2 = animated_simplex_noise(f_coord, 0.2, 0.04);
+            let wave3 = animated_simplex_noise(f_coord, 0.1, 0.001);
 
-            let combined_waves = (
-                wave1 * 1.0
-                + wave2 * 0.2
-                + wave3 * 0.4
-            ) * 0.5;
+            let combined_waves = (wave1 * 1.0 + wave2 * 0.2 + wave3 * 0.4) * 0.5;
+
+            // We mix the highlight color with our new base_color (foam, teal, or deep blue)
             var final_color = mix(base_color, highlight_color, combined_waves * 0.5);
 
-            // UPDATED: Specular highlight is also calculated on the discrete grid.
-            let specular_scale = 0.09; // Makes glints about 6-7 pixels wide
-            let specular_stretch = vec2<f32>(1.0, 2.5); // Stretch horizontally
+            let specular_scale = 0.09;
+            let specular_stretch = vec2<f32>(1.0, 2.5);
             let specular_noise = animated_simplex_noise(f_coord * specular_stretch, 0.3, specular_scale);
 
             let glint_amount = pow(specular_noise, 32.0);
