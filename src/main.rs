@@ -82,7 +82,13 @@ fn main() {
                 .chain(),
         )
         .add_systems(FixedUpdate, sim)
-        .add_systems(Update, systems::update_player_info)
+        .add_systems(
+            Update,
+            (
+                systems::update_player_info,
+                systems::update_water_animation_time,
+            ),
+        )
         .run();
 }
 

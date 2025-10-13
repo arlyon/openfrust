@@ -64,6 +64,7 @@ pub fn setup_map_texture(
         texture_size: Vec2::new(map.width() as f32, map.height() as f32),
         player_colors: colors_buffer,
         map_terrain: terrain_handle,
+        time: 0.0,
     });
 
     // Spawn the map using our custom material
@@ -138,5 +139,16 @@ fn spawn_coordinate_labels(commands: &mut Commands, map: &GameMap) {
         ));
 
         y += LABEL_INTERVAL;
+    }
+}
+
+/// Updates the time uniform in all BorderMaterial assets to animate water
+pub fn update_water_animation_time(
+    time: Res<Time>,
+    mut materials: ResMut<Assets<BorderMaterial>>,
+) {
+    // Iterate over all BorderMaterial assets and update their time uniform
+    for (_, material) in materials.iter_mut() {
+        material.time = time.elapsed_secs();
     }
 }

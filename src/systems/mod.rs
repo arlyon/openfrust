@@ -10,7 +10,7 @@ mod setup;
 
 pub use disconnected_fronts::clear_disconnected_fronts;
 pub use fixed_update_timer::{PerfUiEntryGpuTime, setup_gpu_perf_ui};
-pub use map_renderer::setup_map_texture;
+pub use map_renderer::{setup_map_texture, update_water_animation_time};
 pub use player_elimination::check_eliminations_and_update_troops;
 pub use player_info::update_player_info;
 pub use setup::setup;

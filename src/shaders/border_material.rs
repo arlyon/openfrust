@@ -29,6 +29,10 @@ pub struct BorderMaterial {
     /// Map terrain data (packed u8 MapTiles, 4 per u32)
     #[storage(5, read_only)]
     pub map_terrain: Handle<ShaderStorageBuffer>,
+
+    /// Global time for animations, like water effects
+    #[uniform(6)]
+    pub time: f32,
 }
 
 impl Material2d for BorderMaterial {

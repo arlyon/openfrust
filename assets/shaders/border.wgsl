@@ -6,63 +6,105 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> texture_size: vec2<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var<storage> player_colors: array<vec4<f32>>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(5) var<storage, read> map_terrain: array<u32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(6) var<uniform> time: f32;
 
-// MapTile bitfield layout (u8):
-// Bit 7: is_land
-// Bit 6: is_shoreline
-// Bit 5: is_ocean
-// Bits 0-4: magnitude (0-31)
+// --- Simplex Noise Functions ---
+fn mod289(x: vec2<f32>) -> vec2<f32> {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+fn mod289_3(x: vec3<f32>) -> vec3<f32> {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+fn permute3(x: vec3<f32>) -> vec3<f32> {
+    return mod289_3(((x * 34.0) + 1.0) * x);
+}
+fn simplexNoise2(v: vec2<f32>) -> f32 {
+    let C = vec4<f32>(0.2113248654, 0.3660254037, -0.5773502691, 0.0243902439);
+    var i = floor(v + dot(v, C.yy));
+    let x0 = v - i + dot(i, C.xx);
+    let i1 = select(vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), x0.x > x0.y);
+    let x1 = x0 - i1 + C.xx;
+    let x2 = x0 - 1.0 + C.yy;
+    i = mod289(i);
+    var p = permute3(permute3(i.y + vec3<f32>(0.0, i1.y, 1.0)) + i.x + vec3<f32>(0.0, i1.x, 1.0));
+    var m = max(0.5 - vec3<f32>(dot(x0, x0), dot(x1, x1), dot(x2, x2)), vec3<f32>(0.0));
+    m = m * m;
+    m = m * m;
+    let x = 2.0 * fract(p * C.www) - 1.0;
+    let h = abs(x) - 0.5;
+    let ox = floor(x + 0.5);
+    let a0 = x - ox;
+    m = m * (1.792842914 - 0.853734720 * (a0 * a0 + h * h));
+    let g = vec3<f32>(a0.x * x0.x + h.x * x0.y, a0.y * x1.x + h.y * x1.y, a0.z * x2.x + h.z * x2.y);
+    return 130.0 * dot(m, g);
+}
+
+// UPDATED: Now takes a vec2<f32> coordinate instead of a UV.
+fn animated_simplex_noise(coord: vec2<f32>, speed: f32, scale: f32) -> f32 {
+    let p = coord * scale; // Use discrete pixel coords
+    let motion = vec2<f32>(time * speed, -time * speed * 0.7);
+    let noise = simplexNoise2(p + motion);
+    return (noise + 1.0) * 0.5;
+}
+// --- End Simplex Noise Functions ---
 
 fn get_map_tile_at(coord: vec2<i32>) -> u32 {
-    // Bounds check
     if (coord.x < 0 || coord.x >= i32(texture_size.x) || coord.y < 0 || coord.y >= i32(texture_size.y)) {
         return 0u;
     }
-
-    // Calculate 1D index from 2D coordinates
     let linear_index = u32(coord.y) * u32(texture_size.x) + u32(coord.x);
-
-    // Unpack terrain data (4 u8 MapTiles per u32)
     let packed_idx = linear_index / 4u;
     let sub_idx = linear_index % 4u;
     let packed_val = map_terrain[packed_idx];
-    let tile_byte = (packed_val >> (sub_idx * 8u)) & 0xFFu;
-
-    return tile_byte;
+    return (packed_val >> (sub_idx * 8u)) & 0xFFu;
 }
 
-fn is_land(tile: u32) -> bool {
-    return (tile & 0x80u) != 0u; // Bit 7
-}
+fn is_land(tile: u32) -> bool { return (tile & 0x80u) != 0u; }
+fn is_ocean(tile: u32) -> bool { return (tile & 0x20u) != 0u; }
+fn get_magnitude(tile: u32) -> u32 { return tile & 0x1Fu; }
 
-fn is_ocean(tile: u32) -> bool {
-    return (tile & 0x20u) != 0u; // Bit 5
-}
-
-fn get_magnitude(tile: u32) -> u32 {
-    return tile & 0x1Fu; // Bits 0-4
-}
-
-fn get_terrain_color(tile: u32) -> vec4<f32> {
+// UPDATED: Signature changed to accept discrete integer coordinates
+fn get_terrain_color(tile: u32, coord: vec2<i32>) -> vec4<f32> {
     if (is_land(tile)) {
         let mag = get_magnitude(tile);
         if (mag < 10u) {
-            // Plains - light green, subtle brightness variation
             let brightness = 1.0 + (f32(mag) / 10.0) * 0.1;
             return vec4<f32>(0.6, 0.8, 0.4, 1.0) * brightness;
         } else if (mag < 20u) {
-            // Highland - tan/brown, moderate brightness variation
             let brightness = 1.0 + (f32(mag - 10u) / 10.0) * 0.15;
             return vec4<f32>(0.7, 0.6, 0.4, 1.0) * brightness;
         } else {
-            // Mountain - gray to white, strong brightness variation
-            // Higher mountains get brighter (mag 20-31 maps to brightness 1.0-1.5)
             let brightness = 1.0 + (f32(mag - 20u) / 11.0) * 0.5;
             return vec4<f32>(0.5, 0.5, 0.5, 1.0) * brightness;
         }
     } else if (is_ocean(tile)) {
-        // Ocean - dark blue
-        return vec4<f32>(0.2, 0.3, 0.6, 1.0);
+        let base_color = vec3<f32>(0.01, 0.08, 0.23);
+        let highlight_color = vec3<f32>(0.1, 0.2, 0.7);
+        let f_coord = vec2<f32>(coord); // Cast integer coord to float once
+
+        // UPDATED: Use the discrete f_coord and much smaller scale values.
+        // These values create blocky wave patterns roughly 25-50 pixels in size.
+        let wave1 = animated_simplex_noise(f_coord, 0.4, 0.5); // noise
+        let wave2 = animated_simplex_noise(f_coord, 0.2, 0.04); // fine waves
+        let wave3 = animated_simplex_noise(f_coord, 0.1, 0.001); // broad
+
+        let combined_waves = (
+            wave1 * 1.0
+            + wave2 * 0.2
+            + wave3 * 0.4
+        ) * 0.5;
+        var final_color = mix(base_color, highlight_color, combined_waves * 0.5);
+
+        // UPDATED: Specular highlight is also calculated on the discrete grid.
+        let specular_scale = 0.09; // Makes glints about 6-7 pixels wide
+        let specular_stretch = vec2<f32>(1.0, 2.5); // Stretch horizontally
+        let specular_noise = animated_simplex_noise(f_coord * specular_stretch, 0.3, specular_scale);
+
+        let glint_amount = pow(specular_noise, 32.0);
+        let specular_color = vec3<f32>(1.0, 0.95, 0.8);
+        final_color += glint_amount * specular_color * 1.5;
+
+        return vec4<f32>(final_color, 1.0);
     } else {
         // Lake - lighter blue
         return vec4<f32>(0.3, 0.5, 0.7, 1.0);
@@ -70,41 +112,46 @@ fn get_terrain_color(tile: u32) -> vec4<f32> {
 }
 
 fn get_owner_at(coord: vec2<i32>) -> u32 {
-    // Bounds check to prevent reading out of bounds
     if (coord.x < 0 || coord.x >= i32(texture_size.x) || coord.y < 0 || coord.y >= i32(texture_size.y)) {
-        return 0u; // Return wilderness owner if out of bounds
+        return 0u;
     }
-
-    // Calculate 1D index from 2D pixel coordinates
     let linear_index = u32(coord.y) * u32(texture_size.x) + u32(coord.x);
-
-    // Unpack tile data from packed storage (2 tiles per u32)
     let packed_idx = linear_index / 2u;
     let sub_idx = linear_index % 2u;
     let packed_val = board_data[packed_idx];
     let tile_data = (packed_val >> (sub_idx * 16u)) & 0xFFFFu;
-
     return tile_data & 0x0FFFu;
 }
 
 @fragment
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let uv = mesh.uv;
+    // This is the key: the discrete integer coordinate for the current world pixel.
     let pixel_coord = vec2<i32>(uv * texture_size);
 
-    // Get the center tile owner and terrain
     let center_owner = get_owner_at(pixel_coord);
     let center_terrain = get_map_tile_at(pixel_coord);
 
-    // Get base terrain color
-    let terrain_color = get_terrain_color(center_terrain);
+    // UPDATED: Pass the discrete pixel_coord instead of the continuous uv.
+    var terrain_color = get_terrain_color(center_terrain, pixel_coord);
 
-    // Get player color (for owned territories)
+    // Shoreline Effect
+    let center_is_land = is_land(center_terrain);
+    if (center_is_land) {
+        let top_terrain = get_map_tile_at(pixel_coord + vec2<i32>(0, 1));
+        let bottom_terrain = get_map_tile_at(pixel_coord - vec2<i32>(0, 1));
+        let left_terrain = get_map_tile_at(pixel_coord - vec2<i32>(1, 0));
+        let right_terrain = get_map_tile_at(pixel_coord + vec2<i32>(1, 0));
+
+        let is_shoreline = !is_land(top_terrain) || !is_land(bottom_terrain) || !is_land(left_terrain) || !is_land(right_terrain);
+
+        if (is_shoreline) {
+            let sand_color = vec4<f32>(0.85, 0.8, 0.6, 1.0);
+            terrain_color = mix(terrain_color, sand_color, 0.7);
+        }
+    }
+
     let player_color = player_colors[center_owner];
-
-    // Blend terrain with player ownership
-    // If wilderness (owner 0), show pure terrain color
-    // If owned, blend player color with terrain (60% player, 40% terrain)
     var base_color: vec4<f32>;
     if (center_owner == 0u) {
         base_color = terrain_color;
@@ -112,26 +159,15 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         base_color = mix(terrain_color, player_color, 0.6);
     }
 
-    // Load neighboring pixels for border detection (4-directional)
     let offset = i32(border_thickness);
-
     let top_owner = get_owner_at(pixel_coord + vec2<i32>(0, offset));
     let bottom_owner = get_owner_at(pixel_coord - vec2<i32>(0, offset));
     let left_owner = get_owner_at(pixel_coord - vec2<i32>(offset, 0));
     let right_owner = get_owner_at(pixel_coord + vec2<i32>(offset, 0));
 
-    // Check if any neighbor has a different owner (border detection)
-    var is_border = false;
+    var is_owner_border = (center_owner != top_owner || center_owner != bottom_owner || center_owner != left_owner || center_owner != right_owner);
 
-    if (center_owner != top_owner ||
-        center_owner != bottom_owner ||
-        center_owner != left_owner ||
-        center_owner != right_owner) {
-        is_border = true;
-    }
-
-    // If we're at a border, darken the color
-    if (is_border) {
+    if (is_owner_border) {
         return vec4<f32>(base_color.rgb * border_color.rgb, base_color.a);
     } else {
         return base_color;
