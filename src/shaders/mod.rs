@@ -1,3 +1,11 @@
+mod border_material;
+pub mod compute;
+mod frame_manager;
+
+pub use frame_manager::GpuFrameManager;
+
+pub use border_material::BorderMaterial;
+
 use bevy::{reflect::TypePath, shader::ShaderRef};
 use bevy_app_compute::prelude::ComputeShader;
 

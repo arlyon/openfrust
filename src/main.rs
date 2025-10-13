@@ -13,6 +13,7 @@ use bevy_pancam::PanCamPlugin;
 
 pub mod map;
 mod shaders;
+mod sim_manager;
 mod systems;
 mod types;
 
@@ -20,10 +21,10 @@ use iyes_perf_ui::{PerfUiAppExt, PerfUiPlugin};
 // Re-export types for convenience
 pub use types::*;
 
-use crate::systems::{ExpansionWorker, SimManager};
+use crate::sim_manager::SimManager;
 
 // --- GAME CONSTANTS ---
-pub const NUM_PLAYERS: u16 = 100; // limit is u11 - 1 ie 2047
+pub const NUM_PLAYERS: u16 = 350; // limit is u11 - 1 ie 2047
 pub const EXPANSION_RATE_BASE: f32 = 1.0; // Base rate of expansion per troop per tick
 pub const TILE_SIZE: f32 = 1.0;
 pub const NUM_ENTITIES: u16 = NUM_PLAYERS + 1;
@@ -56,7 +57,7 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(),
             PanCamPlugin,
             PerfUiPlugin,
-            Material2dPlugin::<systems::BorderMaterial>::default(),
+            Material2dPlugin::<shaders::BorderMaterial>::default(),
             // GPU compute plugins
             AppComputePlugin,
         ))
@@ -66,12 +67,10 @@ fn main() {
         // Load the game map BEFORE initializing the GPU worker (which needs dimensions)
         .insert_resource(map::GameMap::load("giantworldmap").expect("Failed to load map"))
         // Initialize SimManager (owns frame manager and timing)
-        .insert_resource(systems::SimManager::default())
-        .add_plugins(AppComputeWorkerPlugin::<systems::ExpansionWorker>::default())
-        .add_plugins(AppComputeWorkerPlugin::<systems::PlayerIdWorker>::default())
-        // Initialize cursor query resources
-        .init_resource::<systems::CursorIDQuery>()
-        .init_resource::<systems::CursorIDResult>()
+        .insert_resource(SimManager::default())
+        // Initialize the sim plugins, gpu-based expansion and cursor querying
+        .add_plugins(shaders::compute::ExpansionPlugin)
+        .add_plugins(shaders::compute::CursorQueryPlugin)
         .add_systems(
             Startup,
             (
@@ -87,15 +86,7 @@ fn main() {
             Update,
             (
                 systems::update_player_info,
-                systems::gpu_read,
-                // Cursor query systems - run in order
-                (
-                    systems::update_cursor_query,
-                    systems::dispatch_id_query,
-                    systems::process_id_query_result,
-                    systems::update_player_info_panel,
-                )
-                    .chain(),
+                systems::update_player_info_panel,
             ),
         )
         .run();
@@ -103,7 +94,7 @@ fn main() {
 
 fn sim(
     mut sim_manager: ResMut<SimManager>,
-    mut worker: ResMut<AppComputeWorker<ExpansionWorker>>,
+    mut worker: ResMut<AppComputeWorker<shaders::compute::ExpansionWorker>>,
     mut players: Query<(Entity, &mut PlayerData), With<Alive>>,
     mut expansions: ResMut<ActiveExpansions>,
     mut commands: Commands,

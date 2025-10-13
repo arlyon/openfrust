@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use iyes_perf_ui::entry::PerfUiEntry;
 use iyes_perf_ui::prelude::*;
 
-use super::SimManager;
+use crate::sim_manager::SimManager;
 
 /// Spawn the GPU timing UI in the top left corner
 pub fn setup_gpu_perf_ui(mut commands: Commands) {

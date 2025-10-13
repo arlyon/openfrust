@@ -4,10 +4,11 @@ use bevy::render::storage::ShaderStorageBuffer;
 use bevy::sprite_render::MeshMaterial2d;
 use bevy_app_compute::prelude::*;
 
-use crate::map::GameMap;
-use crate::systems::{BorderMaterial, ExpansionWorker};
-use crate::types::PlayerColorMap;
 use crate::TILE_SIZE;
+use crate::map::GameMap;
+use crate::shaders::BorderMaterial;
+use crate::shaders::compute::ExpansionWorker;
+use crate::types::PlayerColorMap;
 
 const LABEL_INTERVAL: usize = 256; // Show coordinate every 256 pixels
 
@@ -139,7 +140,3 @@ fn spawn_coordinate_labels(commands: &mut Commands, map: &GameMap) {
         y += LABEL_INTERVAL;
     }
 }
-
-// Legacy rendering system - replaced by GPU-to-GPU copy
-// NOTE: For now, the texture is still updated manually from the CPU board
-// Future optimization: implement GPU-to-GPU copy using copy_to_texture.wgsl

@@ -5,7 +5,7 @@ use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use rand::Rng;
 
 use crate::map::GameMap;
-use crate::systems::ExpansionWorker;
+use crate::shaders::compute::ExpansionWorker;
 use crate::{
     NUM_ENTITIES,
     types::{

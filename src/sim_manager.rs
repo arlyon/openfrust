@@ -3,10 +3,10 @@ use bevy::tasks::ComputeTaskPool;
 use bevy_app_compute::prelude::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::disconnected_fronts::clear_disconnected_fronts;
-use super::expansion_assignment::assign_and_log_expansions;
-use super::gpu::{ExpansionWorker, GpuFrameManager};
-use super::player_elimination::check_eliminations_and_update_troops;
+use crate::shaders::compute::ExpansionWorker;
+
+use crate::shaders::GpuFrameManager;
+use crate::systems::{ai, check_eliminations_and_update_troops, clear_disconnected_fronts};
 use crate::types::{ActiveExpansions, Alive, PlayerData, PlayerEntityMap, PlayerInfoText};
 
 /// Status returned from a simulation tick
@@ -172,7 +172,7 @@ impl SimManager {
 
         // Run game logic systems
         check_eliminations_and_update_troops(players, expansions, commands, text_query);
-        assign_and_log_expansions(players, expansions, adjacency, ComputeTaskPool::get());
+        ai::assign_and_log_expansions(players, expansions, adjacency, ComputeTaskPool::get());
         clear_disconnected_fronts(expansions, players, adjacency, player_map);
         apply_troop_decay(expansions);
     }

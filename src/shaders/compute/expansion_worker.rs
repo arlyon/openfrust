@@ -3,6 +3,21 @@
 //! We keep 3 copies of the board. One is the "read" buffer (board_in) which is used as input to sim tick,
 //! while board_out is the destination for the results of the sim tick, and board_render is kept as an
 //! always-valid state for rendering.
+//!
+//! ## Usage
+//!
+//! Add the [`ExpansionPlugin`] to your app:
+//!
+//! ```no_run
+//! # use bevy::prelude::*;
+//! # use openfrust::shaders::compute::expansion_worker::ExpansionPlugin;
+//! App::new()
+//!     .add_plugins(ExpansionPlugin)
+//!     .run();
+//! ```
+//!
+//! The plugin will automatically set up the expansion worker and the GPU read system
+//! that synchronizes results back to the CPU.
 
 use bevy::prelude::*;
 use bevy_app_compute::prelude::*;
@@ -12,6 +27,7 @@ use crate::map::GameMap;
 use crate::shaders::{
     BorderAdjacencyShader, ClearBuffersShader, ExpansionShader, ProcessResultsShader,
 };
+use crate::sim_manager::SimManager;
 use crate::{EXPANSION_RATE_BASE, NUM_ENTITIES, NUM_PAIRS};
 
 /// Simulation parameters sent to the GPU as a uniform buffer
@@ -203,46 +219,60 @@ impl ComputeWorker for ExpansionWorker {
     }
 }
 
-/// Compute worker for querying player ID at a specific coordinate
-#[derive(Resource)]
-pub struct PlayerIdWorker;
+/// Bevy system that acts as a thin adapter to drive the SimManager.
+///
+/// This system runs in FixedUpdate at 10Hz and coordinates the entire simulation.
+/// All the complex logic lives in SimManager - this is just the ECS integration layer.
+///
+/// Responsibilities:
+/// - Gather data from ECS (queries, resources)
+/// - Pass data to SimManager.tick()
+/// - Handle status reporting (logging)
+#[tracing::instrument(skip_all)]
+pub fn gpu_read(
+    // The manager that now holds all the state and logic
+    mut sim_manager: ResMut<SimManager>,
+    // Dependencies required by the manager's tick method
+    worker: Res<AppComputeWorker<ExpansionWorker>>,
+    time: Res<Time>,
+) {
+    if worker.ready() {
+        tracing::debug!("reading: {:?} {:?}", worker.state, worker.run_mode);
+        // Read back all GPU computation results into the write frame buffer
+        sim_manager.frame_manager.tile_counts_buffers =
+            worker.read_vec::<u32>("player_tile_counts");
+        sim_manager.frame_manager.sum_x_low_buffers = worker.read_vec::<u32>("player_sum_x_low");
+        sim_manager.frame_manager.sum_x_high_buffers = worker.read_vec::<u32>("player_sum_x_high");
+        sim_manager.frame_manager.sum_y_low_buffers = worker.read_vec::<u32>("player_sum_y_low");
+        sim_manager.frame_manager.sum_y_high_buffers = worker.read_vec::<u32>("player_sum_y_high");
+        sim_manager.frame_manager.adjacency_buffers = worker.read_vec::<u32>("adjacency_matrix");
+        sim_manager.timing.mark_ready(&time);
+    }
+}
 
-impl ComputeWorker for PlayerIdWorker {
-    fn build(world: &mut World) -> AppComputeWorker<Self> {
-        // Get the main ExpansionWorker to access the shared board_in buffer
-        let expansion_worker = world.resource::<AppComputeWorker<ExpansionWorker>>();
+/// Plugin that manages the territory expansion GPU pipeline.
+///
+/// This plugin sets up the complete expansion simulation pipeline:
+/// - Registers the [`ExpansionWorker`] compute worker
+/// - Adds the [`gpu_read`] system that synchronizes GPU results back to CPU
+///
+/// The [`gpu_read`] system runs in [`Update`] and reads back computation results
+/// from the GPU worker when ready, updating the [`SimManager`] with the latest data.
+///
+/// ## Example
+///
+/// ```no_run
+/// # use bevy::prelude::*;
+/// # use openfrust::shaders::compute::expansion_worker::ExpansionPlugin;
+/// App::new()
+///     .add_plugins(ExpansionPlugin)
+///     .run();
+/// ```
+pub struct ExpansionPlugin;
 
-        // Get the handle to the shared board_in buffer
-        let board_handle = expansion_worker
-            .get_storage_buffer_asset_handle("board_render")
-            .expect("Failed to get handle for 'board_render' from ExpansionWorker")
-            .clone();
-
-        // Get map dimensions
-        let map = world.resource::<GameMap>();
-        let board_width = map.width() as u32;
-        let board_height = map.height() as u32;
-
-        // Build the worker with shared buffer access
-        AppComputeWorkerBuilder::new(world)
-            // Board dimensions uniform
-            .add_uniform("board_dims", &UVec2::new(board_width, board_height))
-            // Target coordinate to query (will be updated by system)
-            .add_uniform("target_coord", &UVec2::ZERO)
-            // Shared board buffer (read-only for this worker)
-            .add_storage_asset_by_handle("board_data", board_handle)
-            // Result buffer
-            .add_rw_storage("result_id", &[0xFFFFFFFFu32; 1])
-            .add_staging("result_id", &[0xFFFFFFFFu32; 1])
-            // Define the compute pass
-            .add_pass::<crate::shaders::GetPlayerIdShader>(
-                [1, 1, 1], // Single thread for a single lookup
-                &["board_dims", "target_coord", "result_id"],
-                &["board_data"],
-            )
-            .with_label("get_player_id".into())
-            // One-shot mode: only runs when explicitly executed
-            .one_shot()
-            .build()
+impl Plugin for ExpansionPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(AppComputeWorkerPlugin::<ExpansionWorker>::default())
+            .add_systems(Update, gpu_read);
     }
 }

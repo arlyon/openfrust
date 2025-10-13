@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 
-use super::GpuPlayerStats;
-use crate::NUM_ENTITIES;
+use crate::{NUM_ENTITIES, shaders::compute::GpuPlayerStats};
 
 #[derive(Resource, Debug)]
 pub struct GpuFrameManager {
