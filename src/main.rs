@@ -89,6 +89,7 @@ fn main() {
             (
                 systems::update_player_info,
                 systems::handle_render_input,
+                systems::close_on_esc,
                 systems::sync_render_settings_to_materials,
                 systems::update_water_animation_time,
             ),
