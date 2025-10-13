@@ -108,6 +108,10 @@ fn is_ocean(tile: u32) -> bool {
     return (tile & 0x20u) != 0u; // Bit 5
 }
 
+fn is_water(tile: u32) -> bool {
+    return !is_land(tile); // Water is anything that's not land
+}
+
 fn get_magnitude(tile: u32) -> u32 {
     return tile & 0x1Fu; // Bits 0-4
 }
@@ -118,8 +122,8 @@ fn process_tile(x: u32, y: u32, tile_data: u32) -> u32 {
     // Get this tile's physical terrain data from the map
     let map_tile = get_map_tile_at(vec2<i32>(i32(x), i32(y)));
 
-    // Oceans are impassable and cannot be conquered
-    if is_ocean(map_tile) {
+    // Water tiles (oceans and lakes) are impassable and cannot be conquered
+    if is_water(map_tile) {
         return tile_data;
     }
 

@@ -34,8 +34,8 @@ const MOUNTAIN_COLOR: vec3<f32> = vec3<f32>(0.8, 0.8, 0.8);
 const MOUNTAIN_BRIGHTNESS_SCALE: f32 = 0.9;
 
 // Shoreline sand color and blend strength
-const SAND_COLOR: vec4<f32> = vec4<f32>(0.85, 0.8, 0.6, 1.0);
-const SAND_BLEND_AMOUNT: f32 = 0.4;
+const SAND_COLOR: vec4<f32> = vec4<f32>(0.8, 0.8, 0.6, 1.0);
+const SAND_BLEND_AMOUNT: f32 = 0.7;
 
 // --- Ocean and Water Colors ---
 // Deep ocean (far from land)
@@ -123,6 +123,8 @@ const RIVER_FADE_WIDTH: f32 = 0.5;
 const SPHERE_CAMERA_POS: vec3<f32> = vec3<f32>(0.0, 0.0, -2.5);
 const SPHERE_CAMERA_FOV: f32 = 1.5;  // Z component of ray direction, controls FOV
 const SPHERE_ROTATION_SPEED: f32 = 0.1;  // How fast the sphere rotates
+const SPHERE_HEIGHT_SCALE: f32 = 0.05;  // How much terrain elevation affects sphere displacement
+const SPHERE_BASE_RADIUS: f32 = 1.0;  // Base sphere radius before displacement
 
 // --- Player Territory Blending ---
 // How much to blend player color with terrain
@@ -141,6 +143,7 @@ fn get_map_tile_at(coord: vec2<i32>) -> u32 {
 
 fn is_land(tile: u32) -> bool { return (tile & 0x80u) != 0u; }
 fn is_ocean(tile: u32) -> bool { return (tile & 0x20u) != 0u; }
+fn is_water(tile: u32) -> bool { return !is_land(tile); }
 fn get_magnitude(tile: u32) -> u32 { return tile & 0x1Fu; }
 
 // REMOVED: The expensive distance_to_land function is no longer needed!
@@ -202,7 +205,8 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
             let brightness = 1.0 + (f32(mag - 20u) / 11.0) * MOUNTAIN_BRIGHTNESS_SCALE;
             return vec4<f32>(MOUNTAIN_COLOR, 1.0) * brightness;
         }
-    } else if (is_ocean(tile)) {
+    } else if (is_water(tile)) {
+        // Apply same water rendering to both oceans and lakes
         // Sample the distance texture multiple times to blur/smooth the SDF
         // This creates softer, more natural-looking coastal transitions
         let blur_offset = 1.0 / texture_size.x; // One pixel offset in UV space
@@ -312,7 +316,7 @@ fn intersect_sphere(ro: vec3<f32>, rd: vec3<f32>, radius: f32) -> f32 {
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     var uv = mesh.uv;
 
-    if (enable_sphere_projection != 0u) {
+    if (1u != 0u) {
         // Remap screen UV from [0,1] to [-1,1] to represent a view plane
         var screen_coords = (mesh.uv - 0.5) * 2.0;
 
@@ -400,27 +404,27 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         let left_owner = get_owner_at(pixel_coord - vec2<i32>(offset, 0));
         let right_owner = get_owner_at(pixel_coord + vec2<i32>(offset, 0));
 
-        // Get terrain of neighbors to detect ocean vs land boundaries
+        // Get terrain of neighbors to detect water vs land boundaries
         let top_terrain = get_map_tile_at(pixel_coord + vec2<i32>(0, offset));
         let bottom_terrain = get_map_tile_at(pixel_coord - vec2<i32>(0, offset));
         let left_terrain = get_map_tile_at(pixel_coord - vec2<i32>(offset, 0));
         let right_terrain = get_map_tile_at(pixel_coord + vec2<i32>(offset, 0));
 
-        // Ocean tiles should NOT create borders at all
-        let center_is_ocean = is_ocean(center_terrain);
+        // Water tiles (oceans and lakes) should NOT create borders at all
+        let center_is_water = is_water(center_terrain);
 
         var is_owner_border = false;
-        if (!center_is_ocean) {
-            // Land tiles check for ownership changes OR ocean neighbors (coastlines)
-            // For wilderness (owner 0), we need to check if neighbor is ocean
+        if (!center_is_water) {
+            // Land tiles check for ownership changes OR water neighbors (coastlines)
+            // For wilderness (owner 0), we need to check if neighbor is water
             let ownership_change = (center_owner != top_owner || center_owner != bottom_owner || center_owner != left_owner || center_owner != right_owner);
 
-            // If we're wilderness land, also check if any neighbor is ocean
-            let has_ocean_neighbor = (is_ocean(top_terrain) || is_ocean(bottom_terrain) || is_ocean(left_terrain) || is_ocean(right_terrain));
+            // If we're wilderness land, also check if any neighbor is water (ocean or lake)
+            let has_water_neighbor = (is_water(top_terrain) || is_water(bottom_terrain) || is_water(left_terrain) || is_water(right_terrain));
 
             if (center_owner == 0u) {
-                // Wilderness: border if ownership changes OR if bordering ocean
-                is_owner_border = ownership_change || has_ocean_neighbor;
+                // Wilderness: border if ownership changes OR if bordering water
+                is_owner_border = ownership_change || has_water_neighbor;
             } else {
                 // Player territory: border only on ownership changes
                 is_owner_border = ownership_change;
