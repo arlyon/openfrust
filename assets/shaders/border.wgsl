@@ -13,6 +13,119 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(10) var distance_texture: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(11) var distance_sampler: sampler;
 
+// ============================================================================
+// CONSTANTS AND CONFIGURATION
+// ============================================================================
+
+const PI: f32 = 3.1415926535;
+
+// --- Terrain Colors ---
+// Plains (low elevation, magnitude < 10)
+const PLAINS_COLOR: vec3<f32> = vec3<f32>(0.6, 0.8, 0.4);
+const PLAINS_BRIGHTNESS_SCALE: f32 = 0.1;
+
+// Highland (medium elevation, magnitude 10-20)
+const HIGHLAND_COLOR: vec3<f32> = vec3<f32>(0.7, 0.6, 0.4);
+const HIGHLAND_BRIGHTNESS_SCALE: f32 = 0.15;
+
+// Mountain (high elevation, magnitude 20+)
+const MOUNTAIN_COLOR: vec3<f32> = vec3<f32>(0.5, 0.5, 0.5);
+const MOUNTAIN_BRIGHTNESS_SCALE: f32 = 0.5;
+
+// Shoreline sand color and blend strength
+const SAND_COLOR: vec4<f32> = vec4<f32>(0.85, 0.8, 0.6, 1.0);
+const SAND_BLEND_AMOUNT: f32 = 0.7;
+
+// --- Ocean and Water Colors ---
+// Deep ocean (far from land)
+const DEEP_OCEAN_COLOR: vec3<f32> = vec3<f32>(0.01, 0.08, 0.23);
+
+// Coastal water (medium distance from land)
+const COASTAL_COLOR: vec3<f32> = vec3<f32>(0.1, 0.5, 0.6);
+
+// Foam/surf (very close to land)
+const FOAM_COLOR: vec3<f32> = vec3<f32>(0.9, 0.95, 1.0);
+
+// Rivers and lakes (narrow channels detected by river factor)
+const RIVER_COLOR: vec3<f32> = vec3<f32>(0.05, 0.1, 0.3);
+
+// Non-ocean lake color (unused in most cases, legacy support)
+const LAKE_COLOR: vec4<f32> = vec4<f32>(0.3, 0.5, 0.7, 1.0);
+
+// --- Water Animation Colors ---
+// Wave highlight color (mixed in during animation)
+const WAVE_HIGHLIGHT_COLOR: vec3<f32> = vec3<f32>(0.1, 0.2, 0.7);
+const WAVE_HIGHLIGHT_STRENGTH: f32 = 0.5;
+
+// Specular reflection color (sun glints on water)
+const SPECULAR_COLOR: vec3<f32> = vec3<f32>(1.0, 0.95, 0.8);
+const SPECULAR_STRENGTH: f32 = 1.5;
+
+// --- Distance Field Parameters ---
+// Converts normalized texture values back to pixel distances
+const DISTANCE_DENORMALIZE: f32 = 255.0;
+
+// Logarithmic falloff for brightening distant ocean
+const FALLOFF_STRENGTH: f32 = 400.0;  // Higher = more brightening at distance
+const FALLOFF_OFFSET: f32 = 10.0;     // Prevents log(0) and shifts start point
+
+// --- Coastal Animation Parameters ---
+// Foam animation (closest to shore, rapid pulsing)
+const FOAM_ANIM_SPEED: f32 = 1.5;           // How fast foam pulses
+const FOAM_BASE_DIST: f32 = 0.5;            // Base distance where foam starts (pixels)
+const FOAM_ANIM_AMPLITUDE: f32 = 1.0;       // How much foam boundary moves
+const FOAM_TO_COASTAL_BLEND: f32 = 1.0;     // Blend width from foam to coastal
+const FOAM_NOISE_STRENGTH: f32 = 0.5;       // How much noise affects foam edge
+
+// Coastal wave animation (medium distance, slower movement)
+const COASTAL_ANIM_SPEED: f32 = 0.5;        // How fast coastal waves move
+const COASTAL_BASE_DIST: f32 = 0.0;         // Base distance where coastal color starts
+const COASTAL_ANIM_AMPLITUDE: f32 = 3.0;    // How much coastal boundary moves
+const COASTAL_TO_OCEAN_BLEND: f32 = 400.0;  // Blend width from coastal to deep ocean
+const COASTAL_PIXELLATION: f32 = 80.0;      // Noise strength for coastal edge
+
+// --- Water Wave Animation Parameters ---
+// Multi-scale noise for realistic wave appearance
+const WAVE1_SPEED: f32 = 0.4;
+const WAVE1_SCALE: f32 = 0.5;
+const WAVE1_WEIGHT: f32 = 1.0;
+
+const WAVE2_SPEED: f32 = 0.2;
+const WAVE2_SCALE: f32 = 0.04;
+const WAVE2_WEIGHT: f32 = 0.2;
+
+const WAVE3_SPEED: f32 = 0.1;
+const WAVE3_SCALE: f32 = 0.001;
+const WAVE3_WEIGHT: f32 = 0.4;
+
+const WAVE_COMBINED_SCALE: f32 = 0.5;
+
+// Specular highlights (sun glints)
+const SPECULAR_SCALE: f32 = 0.09;
+const SPECULAR_STRETCH: vec2<f32> = vec2<f32>(1.0, 2.5);
+const SPECULAR_SPEED: f32 = 0.3;
+const SPECULAR_POWER: f32 = 32.0;  // Controls tightness of specular highlights
+
+// --- River Detection Parameters ---
+// How far to probe for opposite riverbanks (in pixels)
+const RIVER_PROBE_DISTANCE: f32 = 1.0;
+
+// Below this combined distance, water is considered a river/narrow channel
+const RIVER_WIDTH_THRESHOLD: f32 = RIVER_PROBE_DISTANCE * 2.0;
+
+// Smooth transition width from river to ocean
+const RIVER_FADE_WIDTH: f32 = 0.5;
+
+// --- Sphere Projection Parameters ---
+// Camera position for sphere rendering
+const SPHERE_CAMERA_POS: vec3<f32> = vec3<f32>(0.0, 0.0, -2.5);
+const SPHERE_CAMERA_FOV: f32 = 1.5;  // Z component of ray direction, controls FOV
+const SPHERE_ROTATION_SPEED: f32 = 0.1;  // How fast the sphere rotates
+
+// --- Player Territory Blending ---
+// How much to blend player color with terrain
+const PLAYER_COLOR_BLEND: f32 = 0.6;
+
 
 // --- Simplex Noise Functions ---
 fn mod289(x: vec2<f32>) -> vec2<f32> {
@@ -198,9 +311,6 @@ fn get_owner_at(coord: vec2<i32>) -> u32 {
     let tile_data = (packed_val >> (sub_idx * 16u)) & 0xFFFFu;
     return tile_data & 0x0FFFu;
 }
-
-// --- ADD THESE HELPER FUNCTIONS FOR SPHERE PROJECTION ---
-const PI: f32 = 3.1415926535;
 
 // Solves ray-sphere intersection. Returns distance `t`, or a negative value on miss.
 fn intersect_sphere(ro: vec3<f32>, rd: vec3<f32>, radius: f32) -> f32 {
