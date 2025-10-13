@@ -15,7 +15,7 @@ opt-level = 3
 strip = true
 
 [features]
-default = ["trace_tracy"]
+default = ["trace_tracy", "bevy/file_watcher"]
 trace_tracy = ["bevy/trace_tracy", "bevy_app_compute/trace_tracy"]
 wasm = [ "bevy/webgpu"]
 
