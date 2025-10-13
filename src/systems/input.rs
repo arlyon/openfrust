@@ -14,7 +14,23 @@ pub fn handle_render_input(
         render_settings.enable_water_animation = !render_settings.enable_water_animation;
         info!(
             "Water animation: {}",
-            if render_settings.enable_water_animation { "ON" } else { "OFF" }
+            if render_settings.enable_water_animation {
+                "ON"
+            } else {
+                "OFF"
+            }
+        );
+    }
+
+    if keyboard.just_pressed(KeyCode::KeyS) {
+        render_settings.enable_sphere_projection = !render_settings.enable_sphere_projection;
+        info!(
+            "Sphere projection: {}",
+            if render_settings.enable_sphere_projection {
+                "ON"
+            } else {
+                "OFF"
+            }
         );
     }
 

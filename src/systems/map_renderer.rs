@@ -103,7 +103,11 @@ pub fn setup_map_texture(
             0
         },
         enable_players: if render_settings.enable_players { 1 } else { 0 },
-        enable_sphere_projection: 0,
+        enable_sphere_projection: if render_settings.enable_sphere_projection {
+            1
+        } else {
+            0
+        },
         distance_texture,
     });
 
@@ -209,6 +213,11 @@ pub fn sync_render_settings_to_materials(
                 0
             };
             material.enable_players = if render_settings.enable_players { 1 } else { 0 };
+            material.enable_sphere_projection = if render_settings.enable_sphere_projection {
+                1
+            } else {
+                0
+            };
         }
     }
 }
