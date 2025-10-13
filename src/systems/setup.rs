@@ -57,6 +57,10 @@ pub fn setup(
     let mut initial_board: Vec<Tile> =
         vec![Tile::new(NO_OWNER, 1.0); map.width() as usize * map.height() as usize];
 
+    // Track used starting positions to prevent overlaps
+    let mut used_positions = std::collections::HashSet::new();
+    let min_player_distance = 20; // Minimum distance between players
+
     // Spawn player entities and assign starting positions
     for i in 1..=NUM_PLAYERS {
         // Generate random color for each player
@@ -66,11 +70,27 @@ pub fn setup(
             0.65,
         );
 
-        // Find starting position first
+        // Find starting position: must be on land, not ocean, and not overlap with other players
         let (start_x, start_y) = loop {
             let x = rng.random_range(10..board_width - 10);
             let y = rng.random_range(5..board_height - 5);
-            break (x, y);
+
+            // Check if this tile exists and is not ocean
+            if let Some(tile_ref) = map.tile_ref(x, y) {
+                if !map.is_ocean(tile_ref) && map.is_land(tile_ref) {
+                    // Check if this position is far enough from other players
+                    let too_close = used_positions.iter().any(|&(other_x, other_y): &(u32, u32)| {
+                        let dx = (x as i32 - other_x as i32).abs();
+                        let dy = (y as i32 - other_y as i32).abs();
+                        (dx * dx + dy * dy) < (min_player_distance * min_player_distance)
+                    });
+
+                    if !too_close {
+                        used_positions.insert((x, y));
+                        break (x, y);
+                    }
+                }
+            }
         };
 
         let player_data = PlayerData {
