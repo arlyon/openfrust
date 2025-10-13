@@ -98,20 +98,28 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
 
         // Average the samples for a simple box blur
         let dist_blurred = (dist_center + dist_right + dist_left + dist_up + dist_down) / 5.0;
-        let dist = dist_blurred * 255.0; // Denormalize back to pixels
+        let dist_raw = dist_blurred * 255.0; // Denormalize back to pixels
+
+        // Apply logarithmic falloff for distance-based brightness (brightens distant ocean significantly)
+        // Logarithmic gives a much stronger long-range effect than power functions
+        let falloff_strength = 400.0;  // Higher = more pronounced brightening of distant water
+        let falloff_offset = 10.0;     // Prevents log(0), also shifts where effect starts
+        let dist = dist_raw + falloff_strength * log(1.0 + dist_raw / falloff_offset);
 
         // --- Tweak these parameters to change the look ---
         // Animation
-        let foam_anim_speed = 2.0;
+        let foam_anim_speed = 1.5;
         let coastal_anim_speed = 0.5;
         // Base distances (in pixels)
         let foam_base_dist = 1.5;
-        let foam_anim_amplitude = 1.5; // Foam will pulse between 1.5 and 3.0
+        let foam_anim_amplitude = 1.0; // Foam will pulse between 1.5 and 3.0
         let coastal_base_dist = 0.0;
         let coastal_anim_amplitude = 3.0; // Coastal will wave between 8.0 and 11.0
         // Blending widths (how soft the transitions are)
-        let foam_to_coastal_blend: f32 = 2.0;
-        let coastal_to_ocean_blend: f32 = 20.0;
+        let foam_to_coastal_blend: f32 = 1.0;
+
+        let coastal_to_ocean_blend: f32 = 400.0;
+        let coastal_pixellation: f32 = 80.0;
         // --- End of parameters ---
 
         // Colors
@@ -130,11 +138,11 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
 
         // Use a different speed and phase for the coastal wave to make it look more natural
         let coastal_wave = (sin(time * coastal_anim_speed + 2.0) + 1.0) * 0.5;
-        let animated_coastal_edge = coastal_base_dist + coastal_wave * coastal_anim_amplitude + coastal_noise * 5.0;
+        let animated_coastal_edge = coastal_base_dist + coastal_wave * coastal_anim_amplitude + coastal_noise * coastal_pixellation;
 
         // Calculate the mix factors using smoothstep for a nice gradient
         // 1. How much foam should be visible? Fades out from the animated foam edge.
-        let foam_mix = 1.0 - smoothstep(animated_foam_edge, animated_foam_edge + foam_to_coastal_blend, dist);
+        let foam_mix = 1.0 - smoothstep(animated_foam_edge, animated_foam_edge + foam_to_coastal_blend, dist_raw);
         // 2. How much coastal water should be visible? Fades out from the animated coastal edge.
         let coastal_mix = 1.0 - smoothstep(animated_coastal_edge, animated_coastal_edge + coastal_to_ocean_blend, dist);
 
