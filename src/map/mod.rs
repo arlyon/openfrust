@@ -6,6 +6,14 @@ use bevy::prelude::Resource;
 use bitfield::bitfield;
 use serde::Deserialize;
 
+pub mod loader;
+pub mod loader_fs;
+pub mod loader_http;
+
+pub use loader::{MapLoader, MapLoaderManager};
+pub use loader_fs::FileSystemMapLoader;
+pub use loader_http::{HttpMapLoader, HttpsMapLoader};
+
 bitfield! {
     /// Represents immutable terrain data for a single map tile using a compact bitfield.
     /// Matches the TypeScript implementation's bit layout.
@@ -123,6 +131,66 @@ impl GameMap {
     pub fn load(name: &str) -> io::Result<Self> {
         let base_path = PathBuf::from("assets/maps").join(name);
         Self::load_from_path(&base_path)
+    }
+
+    /// Load a map from a URI using the provided MapLoaderManager
+    pub fn load_from_uri(uri: &str, loader_manager: &MapLoaderManager) -> io::Result<Self> {
+        // Load and parse manifest
+        let manifest_data = loader_manager.load_manifest(uri)?;
+        let manifest: MapManifest = serde_json::from_str(&manifest_data)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        // Load binary terrain data
+        let terrain_bytes = loader_manager.load_map_binary(uri)?;
+
+        // Validate terrain data length
+        let expected_size = (manifest.map.width * manifest.map.height) as usize;
+        if terrain_bytes.len() != expected_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Terrain data length {} doesn't match dimensions {}x{} (expected {})",
+                    terrain_bytes.len(),
+                    manifest.map.width,
+                    manifest.map.height,
+                    expected_size
+                ),
+            ));
+        }
+
+        // Convert bytes to MapTile bitfields
+        let terrain: Vec<MapTile> = terrain_bytes.into_iter().map(MapTile::from_byte).collect();
+
+        // Precompute lookup tables
+        let width = manifest.map.width;
+        let height = manifest.map.height;
+        let total_tiles = (width * height) as usize;
+
+        let mut ref_to_x = Vec::with_capacity(total_tiles);
+        let mut ref_to_y = Vec::with_capacity(total_tiles);
+        let mut y_to_ref = Vec::with_capacity(height as usize);
+
+        let mut tile_ref = 0;
+        for y in 0..height {
+            y_to_ref.push(tile_ref);
+            for x in 0..width {
+                ref_to_x.push(x);
+                ref_to_y.push(y);
+                tile_ref += 1;
+            }
+        }
+
+        Ok(Self {
+            name: manifest.name,
+            width,
+            height,
+            num_land_tiles: manifest.map.num_land_tiles,
+            terrain,
+            nations: manifest.nations,
+            ref_to_x,
+            ref_to_y,
+            y_to_ref,
+        })
     }
 
     /// Load a map from a specific path
