@@ -185,6 +185,46 @@ fn get_magnitude(tile: u32) -> u32 { return tile & 0x1Fu; }
 // REMOVED: The expensive distance_to_land function is no longer needed!
 // We now use a pre-computed distance field texture instead.
 
+// Calculates a "river factor" from 0.0 (open water/ocean) to 1.0 (narrow channel/river).
+// Uses the distance field to detect constriction by checking opposite banks.
+fn calculate_river_factor(uv: vec2<f32>) -> f32 {
+    // How far out to check for opposite riverbanks
+    const PROBE_DISTANCE: f32 = 1.0;
+    let pixel_size = 1.0 / texture_size;
+    let offset = pixel_size * PROBE_DISTANCE;
+
+    // Sample distance field in four cardinal directions
+    let dist_right = textureSample(distance_texture, distance_sampler, uv + vec2<f32>(offset.x, 0.0)).r;
+    let dist_left  = textureSample(distance_texture, distance_sampler, uv - vec2<f32>(offset.x, 0.0)).r;
+    let dist_up    = textureSample(distance_texture, distance_sampler, uv + vec2<f32>(0.0, offset.y)).r;
+    let dist_down  = textureSample(distance_texture, distance_sampler, uv - vec2<f32>(0.0, offset.y)).r;
+
+    // Denormalize distances (multiply by 255 like in get_terrain_color)
+    let d_r = dist_right * 255.0;
+    let d_l = dist_left * 255.0;
+    let d_u = dist_up * 255.0;
+    let d_d = dist_down * 255.0;
+
+    // A river is constricted horizontally OR vertically
+    // If both d_r and d_l are small, it's a narrow horizontal channel
+    let h_constriction = d_r + d_l;
+    let v_constriction = d_u + d_d;
+    let min_constriction = min(h_constriction, v_constriction);
+
+    // Use smoothstep to create a blend factor
+    // Small constriction value = likely a river (factor → 1.0)
+    const RIVER_WIDTH_THRESHOLD: f32 = PROBE_DISTANCE * 2.0;
+    const RIVER_FADE_WIDTH: f32 = 0.5;
+
+    let river_factor = 1.0 - smoothstep(
+        RIVER_WIDTH_THRESHOLD,
+        RIVER_WIDTH_THRESHOLD + RIVER_FADE_WIDTH,
+        min_constriction
+    );
+
+    return river_factor;
+}
+
 // UPDATED: Now takes UV coordinate for texture sampling instead of discrete pixel coord
 fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
     if (is_land(tile)) {
@@ -260,9 +300,21 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
         let coastal_mix = 1.0 - smoothstep(animated_coastal_edge, animated_coastal_edge + coastal_to_ocean_blend, dist);
 
         // Layer the colors using the mix factors. Start with the outermost color.
-        var base_color = deep_ocean_color;
-        base_color = mix(base_color, coastal_color, coastal_mix); // Blend coastal on top of deep ocean
-        base_color = mix(base_color, foam_color, foam_mix);       // Blend foam on top of everything
+        var coastal_base_color = deep_ocean_color;
+        coastal_base_color = mix(coastal_base_color, coastal_color, coastal_mix); // Blend coastal on top of deep ocean
+        coastal_base_color = mix(coastal_base_color, foam_color, foam_mix);       // Blend foam on top of everything
+
+        // --- NEW RIVER DETECTION LOGIC ---
+        // Calculate river factor to detect narrow channels
+        let river_factor = calculate_river_factor(uv);
+
+        // Define simple river/lake color
+        let river_color = vec3<f32>(0.05, 0.1, 0.3);
+
+        // Blend between complex coastal effects and simple river color
+        // river_factor = 1.0 means narrow channel (full river color)
+        // river_factor = 0.0 means open ocean (full coastal effects)
+        var base_color = mix(coastal_base_color, river_color, river_factor);
 
         // --- END OF OPTIMIZED LOGIC ---
 
