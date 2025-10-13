@@ -468,37 +468,112 @@ impl GameMap {
     }
 
     /// Generate a distance field texture showing distance from ocean tiles to nearest land
-    /// Returns a Vec<f32> where each value is the distance in pixels from that tile to the nearest land
-    /// This is used to optimize coastal rendering effects in the shader
+    /// Uses Danielsson's algorithm for accurate Euclidean distance transform
+    /// Returns a Vec<f32> where each value is the Euclidean distance in pixels from that tile to the nearest land
     pub fn generate_distance_field(&self) -> Vec<f32> {
-        use std::collections::VecDeque;
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let total_tiles = w * h;
 
-        let total_tiles = (self.width * self.height) as usize;
-        let mut distances = vec![f32::INFINITY; total_tiles];
-        let mut queue = VecDeque::new();
+        // Use a large value that won't overflow when squared
+        const INFINITY: i32 = i32::MAX / 4;
+        let mut offsets = vec![(INFINITY, INFINITY); total_tiles];
 
-        // Initialize: all land tiles have distance 0, add them to the queue
+        // Initialize: land tiles have zero offset, water tiles start with large offset
         for tile_ref in 0..total_tiles {
             if self.terrain[tile_ref].is_land() {
-                distances[tile_ref] = 0.0;
-                queue.push_back(tile_ref);
+                offsets[tile_ref] = (0, 0);
             }
         }
 
-        // BFS propagation: spread outward from all land tiles
-        while let Some(tile_ref) = queue.pop_front() {
-            let current_distance = distances[tile_ref];
+        // --- Forward pass: scan top-left to bottom-right ---
+        // Neighbors to check: [(dx, dy), corresponding offset adjustment (adj_x, adj_y)]
+        let forward_neighbors = [
+            (-1, -1, 1, 1), // Top-left
+            (0, -1, 0, 1),  // Top
+            (1, -1, -1, 1), // Top-right
+            (-1, 0, 1, 0),  // Left
+        ];
 
-            for neighbor in self.neighbors(tile_ref) {
-                let new_distance = current_distance + 1.0;
-                if new_distance < distances[neighbor] {
-                    distances[neighbor] = new_distance;
-                    queue.push_back(neighbor);
+        for y in 0..h {
+            for x in 0..w {
+                let idx = y * w + x;
+                let (mut best_dx, mut best_dy) = offsets[idx];
+                // Use i64 for squared distance to prevent overflow on large maps
+                let mut best_dist_sq =
+                    (best_dx as i64) * (best_dx as i64) + (best_dy as i64) * (best_dy as i64);
+
+                for (nx, ny, adj_x, adj_y) in forward_neighbors.iter() {
+                    let check_x = x as i32 + nx;
+                    let check_y = y as i32 + ny;
+
+                    if check_x >= 0 && check_x < w as i32 && check_y >= 0 && check_y < h as i32 {
+                        let n_idx = (check_y as usize) * w + (check_x as usize);
+                        let (n_dx, n_dy) = offsets[n_idx];
+
+                        // *** THIS IS THE CRITICAL FIX ***
+                        // We ADD the relative vector from neighbor to current pixel
+                        let new_dx = n_dx + adj_x;
+                        let new_dy = n_dy + adj_y;
+
+                        let new_dist_sq =
+                            (new_dx as i64) * (new_dx as i64) + (new_dy as i64) * (new_dy as i64);
+                        if new_dist_sq < best_dist_sq {
+                            best_dx = new_dx;
+                            best_dy = new_dy;
+                            best_dist_sq = new_dist_sq;
+                        }
+                    }
                 }
+                offsets[idx] = (best_dx, best_dy);
             }
         }
 
-        distances
+        // --- Backward pass: scan bottom-right to top-left ---
+        let backward_neighbors = [
+            (1, 1, -1, -1), // Bottom-right
+            (0, 1, 0, -1),  // Bottom
+            (-1, 1, 1, -1), // Bottom-left
+            (1, 0, -1, 0),  // Right
+        ];
+
+        for y in (0..h).rev() {
+            for x in (0..w).rev() {
+                let idx = y * w + x;
+                let (mut best_dx, mut best_dy) = offsets[idx];
+                let mut best_dist_sq =
+                    (best_dx as i64) * (best_dx as i64) + (best_dy as i64) * (best_dy as i64);
+
+                for (nx, ny, adj_x, adj_y) in backward_neighbors.iter() {
+                    let check_x = x as i32 + nx;
+                    let check_y = y as i32 + ny;
+
+                    if check_x >= 0 && check_x < w as i32 && check_y >= 0 && check_y < h as i32 {
+                        let n_idx = (check_y as usize) * w + (check_x as usize);
+                        let (n_dx, n_dy) = offsets[n_idx];
+
+                        // *** THIS IS THE CRITICAL FIX ***
+                        let new_dx = n_dx + adj_x;
+                        let new_dy = n_dy + adj_y;
+
+                        let new_dist_sq =
+                            (new_dx as i64) * (new_dx as i64) + (new_dy as i64) * (new_dy as i64);
+                        if new_dist_sq < best_dist_sq {
+                            best_dx = new_dx;
+                            best_dy = new_dy;
+                            best_dist_sq = new_dist_sq;
+                        }
+                    }
+                }
+                offsets[idx] = (best_dx, best_dy);
+            }
+        }
+
+        // Convert final offset vectors to Euclidean distances
+        offsets
+            .into_iter()
+            .map(|(dx, dy)| ((dx as f32) * (dx as f32) + (dy as f32) * (dy as f32)).sqrt())
+            .collect()
     }
 }
 
