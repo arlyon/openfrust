@@ -41,6 +41,10 @@ pub struct BorderMaterial {
     /// Enable/disable player rendering - colors and borders (0 = disabled, 1 = enabled)
     #[uniform(8)]
     pub enable_players: u32,
+
+    /// Enable/disable sphere projection (0 = disabled, 1 = enabled)
+    #[uniform(9)]
+    pub enable_sphere_projection: u32,
 }
 
 impl Material2d for BorderMaterial {

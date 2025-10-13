@@ -9,6 +9,8 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(6) var<uniform> time: f32;
 @group(#{MATERIAL_BIND_GROUP}) @binding(7) var<uniform> enable_water_animation: u32;
 @group(#{MATERIAL_BIND_GROUP}) @binding(8) var<uniform> enable_players: u32;
+@group(#{MATERIAL_BIND_GROUP}) @binding(9) var<uniform> enable_sphere_projection: u32;
+
 
 // --- Simplex Noise Functions ---
 fn mod289(x: vec2<f32>) -> vec2<f32> {
@@ -132,9 +134,68 @@ fn get_owner_at(coord: vec2<i32>) -> u32 {
     return tile_data & 0x0FFFu;
 }
 
+// --- ADD THESE HELPER FUNCTIONS FOR SPHERE PROJECTION ---
+const PI: f32 = 3.1415926535;
+
+// Solves ray-sphere intersection. Returns distance `t`, or a negative value on miss.
+fn intersect_sphere(ro: vec3<f32>, rd: vec3<f32>, radius: f32) -> f32 {
+    let b = dot(ro, rd);
+    let c = dot(ro, ro) - radius * radius;
+    let disc = b * b - c; // simplified discriminant
+    if (disc < 0.0) {
+        return -1.0;
+    }
+    return -b - sqrt(disc); // return smallest positive root
+}
+
+// --- UPDATE THE FRAGMENT SHADER ---
 @fragment
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = mesh.uv;
+    var uv = mesh.uv;
+
+    if (enable_sphere_projection != 0u) {
+        // Remap screen UV from [0,1] to [-1,1] to represent a view plane
+        var screen_coords = (mesh.uv - 0.5) * 2.0;
+
+        // --- ADD THESE TWO LINES ---
+        let aspect_ratio = texture_size.x / texture_size.y;
+        screen_coords.x *= aspect_ratio;
+
+        // Setup camera ray
+        // Camera at (0,0,-2.5) looking towards origin. View plane is at z = -1.0
+        let ro = vec3<f32>(0.0, 0.0, -2.5);
+        let rd = normalize(vec3<f32>(screen_coords, 1.5)); // z component controls FOV
+
+        let t = intersect_sphere(ro, rd, 1.0); // Intersect with a unit sphere
+
+        if (t < 0.0) {
+            // Ray missed the sphere. Return transparent to see through it.
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        }
+
+        // Calculate intersection point on sphere
+        var pos = ro + t * rd;
+
+        // Add a simple rotation around the Y axis based on time
+        let time_scaled = time * 0.1;
+        let cos_t = cos(time_scaled);
+        let sin_t = sin(time_scaled);
+        let rot_y = mat3x3<f32>(
+            cos_t, 0.0, sin_t,
+            0.0,   1.0, 0.0,
+            -sin_t, 0.0, cos_t
+        );
+        pos = rot_y * pos;
+
+        // Convert 3D sphere point to 2D UV coordinates (Equirectangular projection)
+        let lat = asin(pos.y);         // Latitude from y-coordinate, range: [-PI/2, PI/2]
+        let lon = atan2(pos.x, pos.z); // Longitude from x and z, range: [-PI, PI]
+
+        // Map latitude and longitude back to UV range [0,1]
+        uv.x =  0.5 - lon / (2.0 * PI);
+        uv.y = lat / PI + 0.5; // Invert Y to match typical texture coordinates
+    }
+
     // This is the key: the discrete integer coordinate for the current world pixel.
     let pixel_coord = vec2<i32>(uv * texture_size);
 

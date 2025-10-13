@@ -66,8 +66,13 @@ pub fn setup_map_texture(
         player_colors: colors_buffer,
         map_terrain: terrain_handle,
         time: 0.0,
-        enable_water_animation: if render_settings.enable_water_animation { 1 } else { 0 },
+        enable_water_animation: if render_settings.enable_water_animation {
+            1
+        } else {
+            0
+        },
         enable_players: if render_settings.enable_players { 1 } else { 0 },
+        enable_sphere_projection: 0,
     });
 
     // Spawn the map using our custom material
@@ -166,7 +171,11 @@ pub fn sync_render_settings_to_materials(
 ) {
     if render_settings.is_changed() {
         for (_, material) in materials.iter_mut() {
-            material.enable_water_animation = if render_settings.enable_water_animation { 1 } else { 0 };
+            material.enable_water_animation = if render_settings.enable_water_animation {
+                1
+            } else {
+                0
+            };
             material.enable_players = if render_settings.enable_players { 1 } else { 0 };
         }
     }

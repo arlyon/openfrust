@@ -205,6 +205,7 @@ pub struct RenderSettings {
     pub enable_water_animation: bool,
     /// Enable/disable player rendering (territory colors and borders)
     pub enable_players: bool,
+    pub enable_sphere_projection: bool,
 }
 
 impl Default for RenderSettings {
@@ -212,6 +213,7 @@ impl Default for RenderSettings {
         Self {
             enable_water_animation: true,
             enable_players: true,
+            enable_sphere_projection: false,
         }
     }
 }
