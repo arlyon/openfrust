@@ -1,4 +1,5 @@
 #import bevy_sprite::mesh2d_vertex_output::VertexOutput
+#import "shaders/simplex.wgsl"::animated_simplex_noise
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<storage, read> board_data: array<u32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var<uniform> border_color: vec4<f32>;
@@ -21,20 +22,20 @@ const PI: f32 = 3.1415926535;
 
 // --- Terrain Colors ---
 // Plains (low elevation, magnitude < 10)
-const PLAINS_COLOR: vec3<f32> = vec3<f32>(0.6, 0.8, 0.4);
-const PLAINS_BRIGHTNESS_SCALE: f32 = 0.1;
+const PLAINS_COLOR: vec3<f32> = vec3<f32>(0.3, 0.4, 0.1);
+const PLAINS_BRIGHTNESS_SCALE: f32 = 0.5;
 
 // Highland (medium elevation, magnitude 10-20)
-const HIGHLAND_COLOR: vec3<f32> = vec3<f32>(0.7, 0.6, 0.4);
-const HIGHLAND_BRIGHTNESS_SCALE: f32 = 0.15;
+const HIGHLAND_COLOR: vec3<f32> = vec3<f32>(0.65, 0.55, 0.35);
+const HIGHLAND_BRIGHTNESS_SCALE: f32 = 0.8;
 
 // Mountain (high elevation, magnitude 20+)
-const MOUNTAIN_COLOR: vec3<f32> = vec3<f32>(0.5, 0.5, 0.5);
-const MOUNTAIN_BRIGHTNESS_SCALE: f32 = 0.5;
+const MOUNTAIN_COLOR: vec3<f32> = vec3<f32>(0.8, 0.8, 0.8);
+const MOUNTAIN_BRIGHTNESS_SCALE: f32 = 0.9;
 
 // Shoreline sand color and blend strength
 const SAND_COLOR: vec4<f32> = vec4<f32>(0.85, 0.8, 0.6, 1.0);
-const SAND_BLEND_AMOUNT: f32 = 0.7;
+const SAND_BLEND_AMOUNT: f32 = 0.4;
 
 // --- Ocean and Water Colors ---
 // Deep ocean (far from land)
@@ -47,10 +48,11 @@ const COASTAL_COLOR: vec3<f32> = vec3<f32>(0.1, 0.5, 0.6);
 const FOAM_COLOR: vec3<f32> = vec3<f32>(0.9, 0.95, 1.0);
 
 // Rivers and lakes (narrow channels detected by river factor)
-const RIVER_COLOR: vec3<f32> = vec3<f32>(0.05, 0.1, 0.3);
+// const RIVER_COLOR: vec3<f32> = vec3<f32>(0.05, 0.1, 0.3);
+const RIVER_COLOR = COASTAL_COLOR;
 
 // Non-ocean lake color (unused in most cases, legacy support)
-const LAKE_COLOR: vec4<f32> = vec4<f32>(0.3, 0.5, 0.7, 1.0);
+const LAKE_COLOR: vec4<f32> = vec4<f32>(DEEP_OCEAN_COLOR, 1.0);
 
 // --- Water Animation Colors ---
 // Wave highlight color (mixed in during animation)
@@ -72,7 +74,7 @@ const FALLOFF_OFFSET: f32 = 10.0;     // Prevents log(0) and shifts start point
 // --- Coastal Animation Parameters ---
 // Foam animation (closest to shore, rapid pulsing)
 const FOAM_ANIM_SPEED: f32 = 1.5;           // How fast foam pulses
-const FOAM_BASE_DIST: f32 = 0.5;            // Base distance where foam starts (pixels)
+const FOAM_BASE_DIST: f32 = 1.0;            // Base distance where foam starts (pixels)
 const FOAM_ANIM_AMPLITUDE: f32 = 1.0;       // How much foam boundary moves
 const FOAM_TO_COASTAL_BLEND: f32 = 1.0;     // Blend width from foam to coastal
 const FOAM_NOISE_STRENGTH: f32 = 0.5;       // How much noise affects foam edge
@@ -126,47 +128,6 @@ const SPHERE_ROTATION_SPEED: f32 = 0.1;  // How fast the sphere rotates
 // How much to blend player color with terrain
 const PLAYER_COLOR_BLEND: f32 = 0.6;
 
-
-// --- Simplex Noise Functions ---
-fn mod289(x: vec2<f32>) -> vec2<f32> {
-    return x - floor(x * (1.0 / 289.0)) * 289.0;
-}
-fn mod289_3(x: vec3<f32>) -> vec3<f32> {
-    return x - floor(x * (1.0 / 289.0)) * 289.0;
-}
-fn permute3(x: vec3<f32>) -> vec3<f32> {
-    return mod289_3(((x * 34.0) + 1.0) * x);
-}
-fn simplexNoise2(v: vec2<f32>) -> f32 {
-    let C = vec4<f32>(0.2113248654, 0.3660254037, -0.5773502691, 0.0243902439);
-    var i = floor(v + dot(v, C.yy));
-    let x0 = v - i + dot(i, C.xx);
-    let i1 = select(vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), x0.x > x0.y);
-    let x1 = x0 - i1 + C.xx;
-    let x2 = x0 - 1.0 + C.yy;
-    i = mod289(i);
-    var p = permute3(permute3(i.y + vec3<f32>(0.0, i1.y, 1.0)) + i.x + vec3<f32>(0.0, i1.x, 1.0));
-    var m = max(0.5 - vec3<f32>(dot(x0, x0), dot(x1, x1), dot(x2, x2)), vec3<f32>(0.0));
-    m = m * m;
-    m = m * m;
-    let x = 2.0 * fract(p * C.www) - 1.0;
-    let h = abs(x) - 0.5;
-    let ox = floor(x + 0.5);
-    let a0 = x - ox;
-    m = m * (1.792842914 - 0.853734720 * (a0 * a0 + h * h));
-    let g = vec3<f32>(a0.x * x0.x + h.x * x0.y, a0.y * x1.x + h.y * x1.y, a0.z * x2.x + h.z * x2.y);
-    return 130.0 * dot(m, g);
-}
-
-// UPDATED: Now takes a vec2<f32> coordinate instead of a UV.
-fn animated_simplex_noise(coord: vec2<f32>, speed: f32, scale: f32) -> f32 {
-    let p = coord * scale; // Use discrete pixel coords
-    let motion = vec2<f32>(time * speed, -time * speed * 0.7);
-    let noise = simplexNoise2(p + motion);
-    return (noise + 1.0) * 0.5;
-}
-// --- End Simplex Noise Functions ---
-
 fn get_map_tile_at(coord: vec2<i32>) -> u32 {
     if (coord.x < 0 || coord.x >= i32(texture_size.x) || coord.y < 0 || coord.y >= i32(texture_size.y)) {
         return 0u;
@@ -188,8 +149,12 @@ fn get_magnitude(tile: u32) -> u32 { return tile & 0x1Fu; }
 // Calculates a "river factor" from 0.0 (open water/ocean) to 1.0 (narrow channel/river).
 // Uses the distance field to detect constriction by checking opposite banks.
 fn calculate_river_factor(uv: vec2<f32>) -> f32 {
-    // How far out to check for opposite riverbanks
-    const PROBE_DISTANCE: f32 = 1.0;
+// --- Recommended Parameters for narrow rivers ---
+    const PROBE_DISTANCE: f32 = 3.0;
+    const RIVER_MAX_DIST_THRESHOLD: f32 = 1.0;
+    const RIVER_FADE_WIDTH: f32 = 8.0;
+    // ---
+
     let pixel_size = 1.0 / texture_size;
     let offset = pixel_size * PROBE_DISTANCE;
 
@@ -199,27 +164,25 @@ fn calculate_river_factor(uv: vec2<f32>) -> f32 {
     let dist_up    = textureSample(distance_texture, distance_sampler, uv + vec2<f32>(0.0, offset.y)).r;
     let dist_down  = textureSample(distance_texture, distance_sampler, uv - vec2<f32>(0.0, offset.y)).r;
 
-    // Denormalize distances (multiply by 255 like in get_terrain_color)
+    // De-normalize distances to pixel space
     let d_r = dist_right * 255.0;
     let d_l = dist_left * 255.0;
     let d_u = dist_up * 255.0;
     let d_d = dist_down * 255.0;
 
-    // A river is constricted horizontally OR vertically
-    // If both d_r and d_l are small, it's a narrow horizontal channel
-    let h_constriction = d_r + d_l;
-    let v_constriction = d_u + d_d;
-    let min_constriction = min(h_constriction, v_constriction);
+    // --- NEW LOGIC ---
+    // Find the furthest distance we can "see" in any of the 4 directions.
+    let max_dist_horizontal = max(d_r, d_l);
+    let max_dist_vertical = max(d_u, d_d);
+    let max_dist = max(max_dist_horizontal, max_dist_vertical);
 
-    // Use smoothstep to create a blend factor
-    // Small constriction value = likely a river (factor → 1.0)
-    const RIVER_WIDTH_THRESHOLD: f32 = PROBE_DISTANCE * 2.0;
-    const RIVER_FADE_WIDTH: f32 = 0.5;
-
+    // If this max distance is SMALL, it means we are enclosed on all sides -> it's a river.
+    // If max_dist is LARGE, it means we found an "escape route" -> it's a coast.
+    // We use (1.0 - ...) because a SMALL max_dist means a HIGH river_factor.
     let river_factor = 1.0 - smoothstep(
-        RIVER_WIDTH_THRESHOLD,
-        RIVER_WIDTH_THRESHOLD + RIVER_FADE_WIDTH,
-        min_constriction
+        RIVER_MAX_DIST_THRESHOLD,
+        RIVER_MAX_DIST_THRESHOLD + RIVER_FADE_WIDTH,
+        max_dist
     );
 
     return river_factor;
@@ -230,14 +193,14 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
     if (is_land(tile)) {
         let mag = get_magnitude(tile);
         if (mag < 10u) {
-            let brightness = 1.0 + (f32(mag) / 10.0) * 0.1;
-            return vec4<f32>(0.6, 0.8, 0.4, 1.0) * brightness;
+            let brightness = 1.0 + (f32(mag) / 10.0) * PLAINS_BRIGHTNESS_SCALE;
+            return vec4<f32>(PLAINS_COLOR, 1.0) * brightness;
         } else if (mag < 20u) {
-            let brightness = 1.0 + (f32(mag - 10u) / 10.0) * 0.15;
-            return vec4<f32>(0.7, 0.6, 0.4, 1.0) * brightness;
+            let brightness = 1.0 + (f32(mag - 10u) / 10.0) * HIGHLAND_BRIGHTNESS_SCALE;
+            return vec4<f32>(HIGHLAND_COLOR, 1.0) * brightness;
         } else {
-            let brightness = 1.0 + (f32(mag - 20u) / 11.0) * 0.5;
-            return vec4<f32>(0.5, 0.5, 0.5, 1.0) * brightness;
+            let brightness = 1.0 + (f32(mag - 20u) / 11.0) * MOUNTAIN_BRIGHTNESS_SCALE;
+            return vec4<f32>(MOUNTAIN_COLOR, 1.0) * brightness;
         }
     } else if (is_ocean(tile)) {
         // Sample the distance texture multiple times to blur/smooth the SDF
@@ -251,95 +214,64 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
 
         // Average the samples for a simple box blur
         let dist_blurred = (dist_center + dist_right + dist_left + dist_up + dist_down) / 5.0;
-        let dist_raw = dist_blurred * 255.0; // Denormalize back to pixels
+        let dist_raw = dist_blurred * DISTANCE_DENORMALIZE; // Denormalize back to pixels
 
         // Apply logarithmic falloff for distance-based brightness (brightens distant ocean significantly)
-        // Logarithmic gives a much stronger long-range effect than power functions
-        let falloff_strength = 400.0;  // Higher = more pronounced brightening of distant water
-        let falloff_offset = 10.0;     // Prevents log(0), also shifts where effect starts
-        let dist = dist_raw + falloff_strength * log(1.0 + dist_raw / falloff_offset);
-
-        // --- Tweak these parameters to change the look ---
-        // Animation
-        let foam_anim_speed = 1.5;
-        let coastal_anim_speed = 0.5;
-        // Base distances (in pixels)
-        let foam_base_dist = 0.5;
-        let foam_anim_amplitude = 1.0; // Foam will pulse between 1.5 and 3.0
-        let coastal_base_dist = 0.0;
-        let coastal_anim_amplitude = 3.0; // Coastal will wave between 8.0 and 11.0
-        // Blending widths (how soft the transitions are)
-        let foam_to_coastal_blend: f32 = 1.0;
-
-        let coastal_to_ocean_blend: f32 = 400.0;
-        let coastal_pixellation: f32 = 80.0;
-        // --- End of parameters ---
-
-        // Colors
-        let foam_color = vec3<f32>(0.9, 0.95, 1.0);
-        let coastal_color = vec3<f32>(0.1, 0.5, 0.6);
-        let deep_ocean_color = vec3<f32>(0.01, 0.08, 0.23);
+        let dist = dist_raw + FALLOFF_STRENGTH * log(1.0 + dist_raw / FALLOFF_OFFSET);
 
         // Add noise-based variation to the animation for more organic movement
         let f_coord = vec2<f32>(coord);
-        let foam_noise = animated_simplex_noise(f_coord, 1.0, 0.4) * 2.0 - 1.0; // Range: -1 to 1
-        let coastal_noise = animated_simplex_noise(f_coord, 1.0, 0.4) * 2.0 - 1.0; // Range: -1 to 1
+        let foam_noise = animated_simplex_noise(f_coord, 1.0, 0.4, time) * 2.0 - 1.0; // Range: -1 to 1
+        let coastal_noise = animated_simplex_noise(f_coord, 1.0, 0.4, time) * 2.0 - 1.0; // Range: -1 to 1
 
         // Animate the distances using sine waves for a smooth ebb and flow, plus noise
-        let foam_pulse = (sin(time * foam_anim_speed) + 1.0) * 0.5; // Varies 0.0 to 1.0
-        let animated_foam_edge = foam_base_dist + foam_pulse * foam_anim_amplitude + foam_noise * 0.5;
+        let foam_pulse = (sin(time * FOAM_ANIM_SPEED) + 1.0) * 0.5; // Varies 0.0 to 1.0
+        let animated_foam_edge = FOAM_BASE_DIST + foam_pulse * FOAM_ANIM_AMPLITUDE + foam_noise * FOAM_NOISE_STRENGTH;
 
         // Use a different speed and phase for the coastal wave to make it look more natural
-        let coastal_wave = (sin(time * coastal_anim_speed + 2.0) + 1.0) * 0.5;
-        let animated_coastal_edge = coastal_base_dist + coastal_wave * coastal_anim_amplitude + coastal_noise * coastal_pixellation;
+        let coastal_wave = (sin(time * COASTAL_ANIM_SPEED + 2.0) + 1.0) * 0.5;
+        let animated_coastal_edge = COASTAL_BASE_DIST + coastal_wave * COASTAL_ANIM_AMPLITUDE + coastal_noise * COASTAL_PIXELLATION;
 
         // Calculate the mix factors using smoothstep for a nice gradient
         // 1. How much foam should be visible? Fades out from the animated foam edge.
-        let foam_mix = 1.0 - smoothstep(animated_foam_edge, animated_foam_edge + foam_to_coastal_blend, dist_raw);
+        let foam_mix = 1.0 - smoothstep(animated_foam_edge, animated_foam_edge + FOAM_TO_COASTAL_BLEND, dist_raw);
         // 2. How much coastal water should be visible? Fades out from the animated coastal edge.
-        let coastal_mix = 1.0 - smoothstep(animated_coastal_edge, animated_coastal_edge + coastal_to_ocean_blend, dist);
+        let coastal_mix = 1.0 - smoothstep(animated_coastal_edge, animated_coastal_edge + COASTAL_TO_OCEAN_BLEND, dist);
 
         // Layer the colors using the mix factors. Start with the outermost color.
-        var coastal_base_color = deep_ocean_color;
-        coastal_base_color = mix(coastal_base_color, coastal_color, coastal_mix); // Blend coastal on top of deep ocean
-        coastal_base_color = mix(coastal_base_color, foam_color, foam_mix);       // Blend foam on top of everything
+        var coastal_base_color = DEEP_OCEAN_COLOR;
+        coastal_base_color = mix(coastal_base_color, COASTAL_COLOR, coastal_mix); // Blend coastal on top of deep ocean
+        coastal_base_color = mix(coastal_base_color, FOAM_COLOR, foam_mix);       // Blend foam on top of everything
 
         // --- NEW RIVER DETECTION LOGIC ---
         // Calculate river factor to detect narrow channels
         let river_factor = calculate_river_factor(uv);
 
-        // Define simple river/lake color
-        let river_color = vec3<f32>(0.05, 0.1, 0.3);
-
         // Blend between complex coastal effects and simple river color
         // river_factor = 1.0 means narrow channel (full river color)
         // river_factor = 0.0 means open ocean (full coastal effects)
-        var base_color = mix(coastal_base_color, river_color, river_factor);
+        var base_color = mix(coastal_base_color, RIVER_COLOR, river_factor);
 
         // --- END OF OPTIMIZED LOGIC ---
 
         // The existing wave animation now applies to our newly blended base color
         // Note: Still uses discrete coord for noise patterns
         if (enable_water_animation != 0u) {
-            let highlight_color = vec3<f32>(0.1, 0.2, 0.7);
             let f_coord = vec2<f32>(coord);
 
-            let wave1 = animated_simplex_noise(f_coord, 0.4, 0.5);
-            let wave2 = animated_simplex_noise(f_coord, 0.2, 0.04);
-            let wave3 = animated_simplex_noise(f_coord, 0.1, 0.001);
+            let wave1 = animated_simplex_noise(f_coord, WAVE1_SPEED, WAVE1_SCALE, time);
+            let wave2 = animated_simplex_noise(f_coord, WAVE2_SPEED, WAVE2_SCALE, time);
+            let wave3 = animated_simplex_noise(f_coord, WAVE3_SPEED, WAVE3_SCALE, time);
 
-            let combined_waves = (wave1 * 1.0 + wave2 * 0.2 + wave3 * 0.4) * 0.5;
+            let combined_waves = (wave1 * WAVE1_WEIGHT + wave2 * WAVE2_WEIGHT + wave3 * WAVE3_WEIGHT) * WAVE_COMBINED_SCALE;
 
             // We mix the highlight color with our new base_color (foam, teal, or deep blue)
-            var final_color = mix(base_color, highlight_color, combined_waves * 0.5);
+            var final_color = mix(base_color, WAVE_HIGHLIGHT_COLOR, combined_waves * WAVE_HIGHLIGHT_STRENGTH);
 
-            let specular_scale = 0.09;
-            let specular_stretch = vec2<f32>(1.0, 2.5);
-            let specular_noise = animated_simplex_noise(f_coord * specular_stretch, 0.3, specular_scale);
+            let specular_noise = animated_simplex_noise(f_coord * SPECULAR_STRETCH, SPECULAR_SPEED, SPECULAR_SCALE, time);
 
-            let glint_amount = pow(specular_noise, 32.0);
-            let specular_color = vec3<f32>(1.0, 0.95, 0.8);
-            final_color += glint_amount * specular_color * 1.5;
+            let glint_amount = pow(specular_noise, SPECULAR_POWER);
+            final_color += glint_amount * SPECULAR_COLOR * SPECULAR_STRENGTH;
 
             return vec4<f32>(final_color, 1.0);
         } else {
@@ -348,7 +280,7 @@ fn get_terrain_color(tile: u32, uv: vec2<f32>, coord: vec2<i32>) -> vec4<f32> {
         }
     } else {
         // Lake - lighter blue
-        return vec4<f32>(0.3, 0.5, 0.7, 1.0);
+        return LAKE_COLOR;
     }
 }
 
@@ -404,7 +336,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         var pos = ro + t * rd;
 
         // Add a simple rotation around the Y axis based on time
-        let time_scaled = time * 0.1;
+        let time_scaled = time * SPHERE_ROTATION_SPEED;
         let cos_t = cos(time_scaled);
         let sin_t = sin(time_scaled);
         let rot_y = mat3x3<f32>(
@@ -443,8 +375,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         let is_shoreline = !is_land(top_terrain) || !is_land(bottom_terrain) || !is_land(left_terrain) || !is_land(right_terrain);
 
         if (is_shoreline) {
-            let sand_color = vec4<f32>(0.85, 0.8, 0.6, 1.0);
-            terrain_color = mix(terrain_color, sand_color, 0.7);
+            terrain_color = mix(terrain_color, SAND_COLOR, SAND_BLEND_AMOUNT);
         }
     }
 
@@ -454,7 +385,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         if (center_owner == 0u) {
             base_color = terrain_color;
         } else {
-            base_color = mix(terrain_color, player_color, 0.6);
+            base_color = mix(terrain_color, player_color, PLAYER_COLOR_BLEND);
         }
     } else {
         // When player rendering is disabled, just show terrain
