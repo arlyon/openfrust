@@ -121,10 +121,12 @@ const RIVER_FADE_WIDTH: f32 = 0.5;
 // --- Sphere Projection Parameters ---
 // Camera position for sphere rendering
 const SPHERE_CAMERA_POS: vec3<f32> = vec3<f32>(0.0, 0.0, -2.5);
-const SPHERE_CAMERA_FOV: f32 = 1.5;  // Z component of ray direction, controls FOV
+const SPHERE_CAMERA_FOV: f32 = 2.0;  // Z component of ray direction, controls FOV
 const SPHERE_ROTATION_SPEED: f32 = 0.1;  // How fast the sphere rotates
-const SPHERE_HEIGHT_SCALE: f32 = 0.05;  // How much terrain elevation affects sphere displacement
-const SPHERE_BASE_RADIUS: f32 = 1.0;  // Base sphere radius before displacement
+const SPHERE_BASE_RADIUS: f32 = 0.1;  // Base sphere radius before displacement
+const SPHERE_DISPLACEMENT_SCALE: f32 = 0.004;
+// NEW: Number of steps for ray marching. Higher is more accurate but slower. 8-16 is a good range.
+const SPHERE_DISPLACEMENT_STEPS: i32 = 10;
 
 // --- Player Territory Blending ---
 // How much to blend player color with terrain
@@ -316,30 +318,12 @@ fn intersect_sphere(ro: vec3<f32>, rd: vec3<f32>, radius: f32) -> f32 {
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     var uv = mesh.uv;
 
-    if (1u != 0u) {
-        // Remap screen UV from [0,1] to [-1,1] to represent a view plane
+    if (enable_sphere_projection != 0u) {
         var screen_coords = (mesh.uv - 0.5) * 2.0;
-
-        // --- ADD THESE TWO LINES ---
         let aspect_ratio = texture_size.x / texture_size.y;
         screen_coords.x *= aspect_ratio;
-
-        // Setup camera ray
-        // Camera at (0,0,-2.5) looking towards origin. View plane is at z = -1.0
-        let ro = vec3<f32>(0.0, 0.0, -2.5);
-        let rd = normalize(vec3<f32>(screen_coords, 1.5)); // z component controls FOV
-
-        let t = intersect_sphere(ro, rd, 1.0); // Intersect with a unit sphere
-
-        if (t < 0.0) {
-            // Ray missed the sphere. Return transparent to see through it.
-            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-        }
-
-        // Calculate intersection point on sphere
-        var pos = ro + t * rd;
-
-        // Add a simple rotation around the Y axis based on time
+        let ro = SPHERE_CAMERA_POS;
+        let rd = normalize(vec3<f32>(screen_coords, SPHERE_CAMERA_FOV));
         let time_scaled = time * SPHERE_ROTATION_SPEED;
         let cos_t = cos(time_scaled);
         let sin_t = sin(time_scaled);
@@ -348,11 +332,79 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
             0.0,   1.0, 0.0,
             -sin_t, 0.0, cos_t
         );
-        pos = rot_y * pos;
 
-        // Convert 3D sphere point to 2D UV coordinates (Equirectangular projection)
-        let lat = asin(pos.y);         // Latitude from y-coordinate, range: [-PI/2, PI/2]
-        let lon = atan2(pos.x, pos.z); // Longitude from x and z, range: [-PI, PI]
+        // --- NEW RAY MARCHING LOGIC to fix occlusion artifacts ---
+
+        // STEP 1: Intersect with the sphere's outer shell (max displacement) and inner core (sea level).
+        // This defines the interval along the ray where the surface could possibly be.
+        let t_near = intersect_sphere(ro, rd, 1.0 + SPHERE_DISPLACEMENT_SCALE);
+        if (t_near < 0.0) {
+            // The ray completely misses even the highest mountain peaks.
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        }
+
+        let t_far = intersect_sphere(ro, rd, 1.0);
+
+        // STEP 2: March along the ray from the near to the far intersection point.
+        // We are looking for the *first* point where the ray goes "under" the terrain surface.
+        let t_start = t_near;
+        // If we miss the inner sphere (t_far < 0), we're at the horizon. We still need to march
+        // a short distance to see if we hit a mountain silhouette.
+        let search_depth = SPHERE_DISPLACEMENT_SCALE * 1.5;
+        let t_end = select(t_far, t_start + search_depth, t_far < 0.0);
+
+        let ray_length = t_end - t_start;
+        let step_size = ray_length / f32(SPHERE_DISPLACEMENT_STEPS);
+
+        var intersection_t = -1.0; // Use -1 to indicate no intersection found yet
+
+        for (var i = 0; i <= SPHERE_DISPLACEMENT_STEPS; i = i + 1) {
+            let t = t_start + f32(i) * step_size;
+            let p = ro + t * rd;
+
+            // Sample the terrain height at this point `p`
+            let rotated_p = rot_y * p;
+            let p_radius = length(rotated_p);
+
+            let lat = asin(rotated_p.y / p_radius);
+            let lon = atan2(rotated_p.x, rotated_p.z);
+            let sample_uv = vec2<f32>(0.5 - lon / (2.0 * PI), lat / PI + 0.5);
+
+            let tile = get_map_tile_at(vec2<i32>(sample_uv * texture_size));
+            var displacement = 0.0;
+            if (is_land(tile)) {
+                displacement = (f32(get_magnitude(tile)) / 31.0) * SPHERE_DISPLACEMENT_SCALE;
+            }
+            let terrain_radius = 1.0 + displacement;
+
+            // If the ray's distance from the center is less than the terrain's radius, we've hit it.
+            if (p_radius < terrain_radius) {
+                // This is the intersection point.
+                intersection_t = t;
+                // For higher accuracy, you could interpolate between this step and the previous one,
+                // but for this many steps, using the current `t` is a good approximation.
+                break;
+            }
+        }
+
+        var pos: vec3<f32>;
+        if (intersection_t >= 0.0) {
+            // We hit a displaced landmass.
+            pos = ro + intersection_t * rd;
+        } else if (t_far >= 0.0) {
+            // We marched through the whole interval without hitting land, so we must be over the ocean.
+            // Use the intersection with the base sphere.
+            pos = ro + t_far * rd;
+        } else {
+            // We didn't hit land and we missed the ocean. We're looking at empty space past the horizon.
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        }
+
+        // STEP 3: Calculate the final UV from the correct intersection point.
+        pos = rot_y * pos;
+        let final_radius = length(pos);
+        let lat = asin(pos.y / final_radius);
+        let lon = atan2(pos.x, pos.z);
 
         // Map latitude and longitude back to UV range [0,1]
         uv.x =  0.5 - lon / (2.0 * PI);
